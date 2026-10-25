@@ -1,4 +1,4 @@
-# XCP-ng versus Proxmox VE
+# Proxmox VE versus XenServer and XCP-ng
 
 ## What the names mean
 
@@ -13,6 +13,63 @@
 Both ecosystems have substantial open-source projects behind them. Familiarity or popularity in a particular community does not establish technical superiority.
 
 Sources: [XCP-ng overview](https://docs.xcp-ng.org/), [Xen Orchestra overview](https://docs.xen-orchestra.com/), [XO from source](https://docs.xen-orchestra.com/category/getting-started), [Proxmox overview](https://proxmox.com/en/products/proxmox-virtual-environment/overview).
+
+## Direct comparison: what changes between the two stacks
+
+The architectural comparison is Proxmox's QEMU/KVM stack versus the Xen stack used by XenServer and XCP-ng. XenServer and XCP-ng are separate products: similar architectural terms do not imply identical features, licensing, storage support, or release policies. This guide uses XCP-ng when discussing the installed platform and its storage behavior.
+
+| Responsibility | Proxmox VE / QEMU / KVM | XenServer or XCP-ng / Xen |
+| --- | --- | --- |
+| Management interface | Proxmox configures and manages the VM lifecycle | The product's management toolstack configures Xen guests; XCP-ng commonly uses Xen Orchestra for centralized management |
+| Where the hypervisor lives | KVM is part of the Linux kernel | Xen is a separate hypervisor below the control domain and guests |
+| CPU allocation | Linux schedules virtual-CPU threads onto physical CPUs; KVM controls hardware-assisted guest execution | Xen schedules virtual CPUs for guest domains and the control domain |
+| Guest memory | QEMU arranges/registers guest memory; Linux and KVM manage backing, hardware mappings, and isolation | Xen controls guest memory allocation/mappings and isolation; the toolstack coordinates configuration |
+| Physical hardware drivers | Primarily in the host Linux kernel | Primarily in the privileged Linux control domain for normal managed device paths |
+| Virtual hardware | QEMU supplies device models and backends; accelerated paths can use other components | QEMU can supply emulated devices; Xen frontend/backend drivers provide efficient paths |
+| Normal virtual-disk I/O | Guest driver to host-side backend, then host storage and physical drivers | Guest driver to backend/device implementation, commonly through the control domain and storage services |
+| Device passthrough | An assigned device can bypass the normal virtual-device backend path | An assigned device can likewise bypass the normal backend path |
+| Virtual-disk storage | Backend may be an image file, LVM-thin volume, ZFS volume, or other supported storage | Backend depends on the product and storage repository; traditional XCP-ng EXT storage commonly uses VHD images |
+| Snapshot mechanism | Determined by the selected backend and format, not KVM | Determined by the storage implementation and format, not Xen alone |
+
+### The same CPU calculation on each platform
+
+Suppose an application in an Ubuntu VM adds two numbers.
+
+On Proxmox, Linux schedules that VM's virtual-CPU thread. KVM enters guest execution, and the real CPU executes the application's instructions. QEMU does not interpret each arithmetic instruction.
+
+On Xen, Xen schedules that VM's virtual CPU. In a hardware-assisted guest, the real CPU also executes the application's instructions. The Linux control domain does not interpret each arithmetic instruction either.
+
+Events requiring virtualization handling can return control to the hypervisor. The important difference is which kernel/hypervisor is responsible, not that one platform normally runs ordinary guest instructions through a software interpreter and the other does not.
+
+### The same disk request on each platform
+
+Suppose Ubuntu requests a block from its virtual disk.
+
+On a typical Proxmox VirtIO setup, the guest driver communicates through a request queue to the host-side implementation. A QEMU storage backend may read an image file or block device using the host's I/O facilities. The host's physical storage driver reaches the actual drive. The result is delivered back to the guest.
+
+On a typical Xen paravirtualized storage path, the guest frontend driver communicates with a backend in the control domain. The storage stack locates the requested block in the relevant virtual-disk representation and uses physical drivers to access storage. The result is returned to the guest.
+
+These are representative paths, not universal diagrams: emulated devices, passthrough, kernel offloads, network storage, and different storage drivers change the details.
+
+### Why the small Xen core is an advantage, but not a complete verdict
+
+A separate, focused hypervisor can make the core isolation mechanism easier to study independently. Xen's architecture can also support explicit separation of device-driver responsibilities.
+
+However, the normal control domain is highly privileged and still contains a substantial Linux kernel, drivers, and management software. Its role matters to the full system's security and reliability. Counting only Xen's core omits much of the operational stack.
+
+KVM is also purpose-built virtualization code. It reuses Linux's scheduler, memory management, and driver ecosystem rather than putting those behind a separate hypervisor. This is an architectural dependency and a source of integration benefits; it is not automatically an extra interpreter or an extra hop for every CPU instruction.
+
+A smaller core does not establish lower total RAM consumption, better application throughput, or immunity from vulnerabilities. Compare the complete configured systems and benchmark the intended workloads.
+
+### What would actually justify choosing one?
+
+Choose Proxmox when its integrated interface, LXC support, Linux ecosystem, or supported local-storage choices simplify the lab you want to operate. In particular, native ZFS or LVM-thin workflows may be a concrete advantage over the snapshot workflow of a traditional VHD-backed setup.
+
+Choose or keep XCP-ng when its VM-focused workflow, Xen Orchestra management/backup features, existing configuration, or a specific Xen capability fits the requirements better. Avoiding an unnecessary migration is useful, but it is not the only valid reason to choose it.
+
+Neither decision should rest solely on the words “bare metal,” “type 1,” “small hypervisor,” or “uses Linux.” Those labels do not describe the full CPU, device, storage, and management paths.
+
+Sources: [Xen architecture](https://handbook.xenproject.org/users/introduction.html), [XCP-ng architecture](https://docs.xcp-ng.org/project/architecture/), [KVM API](https://docs.kernel.org/virt/kvm/api.html), [QEMU architecture](https://www.qemu.org/docs/master/system/introduction.html), [Proxmox storage](https://github.com/proxmox/pve-docs/blob/master/pvesm.adoc).
 
 ## CPU virtualization: both use the real processor
 
