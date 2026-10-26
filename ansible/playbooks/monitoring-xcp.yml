@@ -1,0 +1,19 @@
+---
+- name: Manage the external XCP host metrics collector on XOA
+  hosts: xoa_metrics
+  gather_facts: false
+  any_errors_fatal: true
+  become: false
+  pre_tasks:
+    - name: Require explicit reviewed private deployment inputs
+      ansible.builtin.assert:
+        that:
+          - ansible_play_hosts_all | length == 1
+          - xcp_metrics_deployment_approved | default(false) is sameas true
+          - xcp_metrics_zero_cost_verified | default(false) is sameas true
+          - xcp_metrics_enabled is boolean
+    - name: Gather only the collector VM's minimum facts
+      ansible.builtin.setup:
+        gather_subset: [min]
+  roles:
+    - monitoring_xcp

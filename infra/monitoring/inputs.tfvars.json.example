@@ -1,0 +1,16 @@
+{
+  "free_plan_verified": false,
+  "unbilled_trial_collection_verified": false,
+  "prometheus_datasource_uid": "REPLACE_WITH_EXISTING_PROM_UID",
+  "loki_datasource_uid": "REPLACE_WITH_EXISTING_LOKI_UID",
+  "usage_datasource_uid": null,
+  "enable_security_dashboard": false,
+  "collector_targets": [],
+  "wazuh_manager_targets": [],
+  "opnsense_targets": [],
+  "deployment_reviewed": false,
+  "expected_linux_hosts": [],
+  "expected_windows_hosts": [],
+  "alerts_enabled": false,
+  "existing_contact_point_name": null
+}

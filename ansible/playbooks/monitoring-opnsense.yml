@@ -1,0 +1,14 @@
+---
+- name: Configure the selected OPNsense logging target through its verified HTTPS API
+  hosts: firewall
+  connection: local
+  gather_facts: false
+  serial: 1
+  any_errors_fatal: true
+  pre_tasks:
+    - name: Apply exact-selection and access safeguards
+      ansible.builtin.import_tasks: monitoring-preflight.yml
+  tasks:
+    - name: Reconcile the dedicated private-network syslog destination
+      ansible.builtin.include_role:
+        name: monitoring_opnsense

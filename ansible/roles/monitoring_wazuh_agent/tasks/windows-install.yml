@@ -1,0 +1,68 @@
+---
+- name: Require explicit Windows install approval and reviewed private inputs
+  ansible.builtin.assert:
+    that:
+      - monitoring_wazuh_agent_install_approved is sameas true
+      - monitoring_wazuh_agent_package_sha256 is match('^[a-f0-9]{64}$')
+      - monitoring_wazuh_enrollment_password | length > 0
+      - monitoring_wazuh_manager_ca_source | length > 0
+      - monitoring_wazuh_enrollment_tls_verified is sameas true
+      - "'-----BEGIN CERTIFICATE-----' in lookup('ansible.builtin.file', monitoring_wazuh_manager_ca_source)"
+      - "'PRIVATE KEY' not in lookup('ansible.builtin.file', monitoring_wazuh_manager_ca_source)"
+      - monitoring_wazuh_agent_group == 'homelab-windows'
+    fail_msg: Fresh Windows agents require explicit verified CA-authenticated TLS enrollment and private password; default unverified manager enrollment is rejected.
+  no_log: true
+
+- name: Copy reviewed manager trust certificate
+  ansible.windows.win_copy:
+    src: '{{ monitoring_wazuh_manager_ca_source }}'
+    dest: 'C:\ProgramData\homelab-wazuh-manager-ca.pem'
+
+- name: Download pinned official Windows agent
+  ansible.windows.win_get_url:
+    url: 'https://packages.wazuh.com/4.x/windows/wazuh-agent-{{ monitoring_wazuh_agent_version }}-1.msi'
+    dest: 'C:\ProgramData\homelab-wazuh-agent-{{ monitoring_wazuh_agent_version }}.msi'
+    checksum: '{{ monitoring_wazuh_agent_package_sha256 }}'
+    checksum_algorithm: sha256
+    validate_certs: true
+  register: monitoring_windows_package
+
+- name: Install absent Windows agent without replacing retained identity
+  ansible.windows.win_package:
+    path: '{{ monitoring_windows_package.dest }}'
+    state: present
+    arguments:
+      - 'WAZUH_MANAGER={{ monitoring_wazuh_manager_address }}'
+      - 'WAZUH_MANAGER_PORT={{ monitoring_wazuh_manager_port }}'
+      - 'WAZUH_REGISTRATION_SERVER={{ monitoring_wazuh_manager_address }}'
+      - 'WAZUH_REGISTRATION_PASSWORD={{ monitoring_wazuh_enrollment_password }}'
+      - 'WAZUH_REGISTRATION_CA=C:\ProgramData\homelab-wazuh-manager-ca.pem'
+      - 'WAZUH_AGENT_GROUP={{ monitoring_wazuh_agent_group }}'
+      - 'WAZUH_AGENT_NAME={{ inventory_hostname }}'
+  no_log: true
+  diff: false
+
+- name: Verify Windows enrollment uses the reviewed CA and private password file
+  ansible.windows.win_powershell:
+    script: |
+      param([string]$Root)
+      $Ansible.Changed = $false
+      $xml = [xml]('<root>' + [IO.File]::ReadAllText((Join-Path $Root 'ossec.conf')) + '</root>')
+      if ($xml.SelectSingleNode('//client/enrollment/server_ca_path').InnerText -ne 'C:\ProgramData\homelab-wazuh-manager-ca.pem') {
+        throw 'Missing reviewed enrollment CA; unverified manager enrollment refused'
+      }
+      $passwordPath = $xml.SelectSingleNode('//client/enrollment/authorization_pass_path').InnerText
+      if (!$passwordPath) { $passwordPath = 'authd.pass' }
+      if (![IO.Path]::IsPathRooted($passwordPath)) { $passwordPath = Join-Path $Root $passwordPath }
+      if ([IO.Path]::GetFullPath($passwordPath) -ne [IO.Path]::GetFullPath((Join-Path $Root 'authd.pass'))) {
+        throw 'Unreviewed enrollment password path'
+      }
+      if ((Get-Item -LiteralPath $passwordPath).Length -eq 0) { throw 'Empty enrollment password' }
+      $broad = @('S-1-1-0', 'S-1-5-11', 'S-1-5-32-545')
+      foreach ($entry in (Get-Acl -LiteralPath $passwordPath).Access) {
+        $sid = $entry.IdentityReference.Translate([Security.Principal.SecurityIdentifier]).Value
+        if ($entry.AccessControlType -eq 'Allow' -and $sid -in $broad) { throw 'Enrollment password grants broad access' }
+      }
+    parameters:
+      Root: '{{ monitoring_wazuh_windows_path }}'
+  no_log: true

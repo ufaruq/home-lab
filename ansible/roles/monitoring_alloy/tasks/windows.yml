@@ -1,0 +1,224 @@
+---
+- name: Gather minimal Windows facts after deployment gate
+  ansible.windows.setup:
+    gather_subset: [min]
+
+- name: Require supported 64-bit Windows guest
+  ansible.builtin.assert:
+    that:
+      - ansible_facts.os_family == 'Windows'
+      - ansible_facts.architecture in ['64-bit', 'x86_64']
+
+- name: Inspect official Windows binary location
+  ansible.windows.win_stat:
+    path: C:\Program Files\GrafanaLabs\Alloy\alloy-windows-amd64.exe
+  register: monitoring_alloy_binary
+
+- name: Inspect existing Windows service
+  ansible.windows.win_service_info:
+    name: Alloy
+  register: monitoring_alloy_windows_service
+
+- name: Refuse unapproved installation or implicit Windows repair
+  ansible.builtin.assert:
+    that:
+      - monitoring_alloy_binary.stat.exists or (not monitoring_alloy_windows_service.exists and monitoring_alloy_install_approved)
+      - not monitoring_alloy_binary.stat.exists or monitoring_alloy_windows_service.exists
+    fail_msg: Windows Alloy must use the official service at its default path; fresh installation requires explicit approval. Review repairs separately.
+
+- name: Verify existing Windows binary version before adoption
+  ansible.windows.win_command:
+    argv: ['C:\Program Files\GrafanaLabs\Alloy\alloy-windows-amd64.exe', --version]
+  changed_when: false
+  register: monitoring_alloy_existing_version
+  when: monitoring_alloy_binary.stat.exists
+
+- name: Refuse implicit Windows binary upgrades
+  ansible.builtin.assert:
+    that:
+      - monitoring_alloy_existing_version.stdout is search('version v?' ~ (monitoring_alloy_version | regex_escape) ~ '(\s|$|\))')
+    fail_msg: Existing Windows Alloy version differs from the pin; no automatic upgrade is allowed.
+  when: monitoring_alloy_binary.stat.exists
+
+- name: Create Windows collector private root
+  ansible.windows.win_file:
+    path: C:\ProgramData\HomeLabMonitoring\Alloy
+    state: directory
+
+- name: Restrict Windows private root to SYSTEM and Administrators before writing secrets
+  ansible.windows.win_powershell:
+    script: |
+      $path = 'C:\ProgramData\HomeLabMonitoring\Alloy'
+      $items = @((Get-Item -LiteralPath $path)) + @(Get-ChildItem -LiteralPath $path -Recurse -Force)
+      if (@($items | Where-Object { $_.Attributes -band [System.IO.FileAttributes]::ReparsePoint }).Count) {
+        throw 'Refusing reparse points in the private Alloy directory'
+      }
+      $acl = [System.Security.AccessControl.DirectorySecurity]::new()
+      $acl.SetAccessRuleProtection($true, $false)
+      foreach ($sid in @('S-1-5-18', 'S-1-5-32-544')) {
+        $identity = [System.Security.Principal.SecurityIdentifier]::new($sid)
+        $rule = [System.Security.AccessControl.FileSystemAccessRule]::new(
+          $identity, 'FullControl', 'ContainerInherit,ObjectInherit', 'None', 'Allow')
+        $acl.AddAccessRule($rule)
+      }
+      $acl.SetOwner([System.Security.Principal.SecurityIdentifier]::new('S-1-5-32-544'))
+      $fileAcl = [System.Security.AccessControl.FileSecurity]::new()
+      $fileAcl.SetAccessRuleProtection($true, $false)
+      foreach ($sid in @('S-1-5-18', 'S-1-5-32-544')) {
+        $identity = [System.Security.Principal.SecurityIdentifier]::new($sid)
+        $fileAcl.AddAccessRule([System.Security.AccessControl.FileSystemAccessRule]::new($identity, 'FullControl', 'Allow'))
+      }
+      $fileAcl.SetOwner([System.Security.Principal.SecurityIdentifier]::new('S-1-5-32-544'))
+      $Ansible.Changed = $false
+      foreach ($item in $items) {
+        $desired = if ($item.PSIsContainer) { $acl } else { $fileAcl }
+        if ((Get-Acl -LiteralPath $item.FullName).Sddl -ne $desired.Sddl) {
+          Set-Acl -LiteralPath $item.FullName -AclObject $desired
+          $Ansible.Changed = $true
+        }
+      }
+
+- name: Install official pinned Windows service only for approved fresh hosts
+  when: not monitoring_alloy_binary.stat.exists
+  block:
+    - name: Download official pinned Windows installer with verified SHA256
+      ansible.windows.win_get_url:
+        url: "https://github.com/grafana/alloy/releases/download/v{{ monitoring_alloy_version }}/alloy-installer-windows-amd64.exe"
+        dest: C:\ProgramData\HomeLabMonitoring\Alloy\installer.exe
+        checksum: "{{ monitoring_alloy_release.windows_installer }}"
+        checksum_algorithm: sha256
+        validate_certs: true
+    - name: Provide inert bootstrap configuration for installer-created service
+      ansible.windows.win_copy:
+        content: "logging { level = \"warn\" }\n"
+        dest: C:\ProgramData\HomeLabMonitoring\Alloy\bootstrap.alloy
+    - name: Install without default telemetry reporting or profiling
+      ansible.windows.win_command:
+        argv:
+          - C:\ProgramData\HomeLabMonitoring\Alloy\installer.exe
+          - /S
+          - /DISABLEREPORTING=yes
+          - /DISABLEPROFILING=yes
+          - /CONFIG=C:\ProgramData\HomeLabMonitoring\Alloy\bootstrap.alloy
+      changed_when: true
+    - name: Stop inert installer-created service until candidate validation succeeds
+      ansible.windows.win_service:
+        name: Alloy
+        state: stopped
+
+- name: Verify installed Windows binary version
+  ansible.windows.win_command:
+    argv: ['C:\Program Files\GrafanaLabs\Alloy\alloy-windows-amd64.exe', --version]
+  register: monitoring_alloy_installed_version
+  changed_when: false
+
+- name: Confirm Windows binary pin
+  ansible.builtin.assert:
+    that:
+      - monitoring_alloy_installed_version.stdout is search('version v?' ~ (monitoring_alloy_version | regex_escape) ~ '(\s|$|\))')
+
+- name: Preserve Windows persistent positions and WAL directory
+  ansible.windows.win_file:
+    path: C:\ProgramData\HomeLabMonitoring\Alloy\data
+    state: directory
+
+- name: Seed new Windows bookmarks at the current event instead of replaying history
+  ansible.windows.win_powershell:
+    script: |
+      param([string]$Channel)
+      $path = 'C:\ProgramData\HomeLabMonitoring\Alloy\data\' + $Channel.ToLowerInvariant() + '-bookmark.xml'
+      $Ansible.Changed = $false
+      if (-not (Test-Path -LiteralPath $path)) {
+        $event = Get-WinEvent -LogName $Channel -MaxEvents 1 -ErrorAction SilentlyContinue
+        if ($null -ne $event) {
+          [System.IO.File]::WriteAllText($path, $event.Bookmark.BookmarkXml, [System.Text.UTF8Encoding]::new($false))
+          $event.Dispose()
+        } else {
+          # Empty channels have no historical events to replay. Refuse other errors.
+          $log = Get-WinEvent -ListLog $Channel -ErrorAction Stop
+          if ($log.RecordCount -ne 0) { throw 'Cannot read latest event for initial Alloy bookmark' }
+        }
+        $Ansible.Changed = $true
+      }
+    parameters:
+      Channel: "{{ item }}"
+  loop: "{{ monitoring_alloy_windows_event_channels | unique }}"
+  notify: Restart Windows Alloy
+
+- name: Store Windows token in protected file outside configuration
+  ansible.windows.win_copy:
+    content: "{{ monitoring_grafana_write_token }}"
+    dest: C:\ProgramData\HomeLabMonitoring\Alloy\grafana-write-token
+  no_log: true
+  diff: false
+  notify: Restart Windows Alloy
+
+- name: Render and validate Windows candidate before changing the active configuration
+  block:
+    - name: Render protected Windows candidate
+      ansible.windows.win_template:
+        src: config.alloy.j2
+        dest: C:\ProgramData\HomeLabMonitoring\Alloy\candidate.alloy
+      vars:
+        monitoring_alloy_platform: windows
+        monitoring_alloy_token_path: C:\ProgramData\HomeLabMonitoring\Alloy\grafana-write-token
+        monitoring_alloy_storage_path: C:\ProgramData\HomeLabMonitoring\Alloy\data
+      no_log: true
+      diff: false
+    - name: Run native Windows Alloy validator without starting telemetry
+      ansible.windows.win_command:
+        argv:
+          - C:\Program Files\GrafanaLabs\Alloy\alloy-windows-amd64.exe
+          - validate
+          - C:\ProgramData\HomeLabMonitoring\Alloy\candidate.alloy
+      changed_when: false
+      no_log: true
+      diff: false
+    - name: Activate validated Windows configuration
+      ansible.windows.win_copy:
+        src: C:\ProgramData\HomeLabMonitoring\Alloy\candidate.alloy
+        dest: C:\ProgramData\HomeLabMonitoring\Alloy\config.alloy
+        remote_src: true
+      no_log: true
+      diff: false
+      notify: Restart Windows Alloy
+  always:
+    - name: Remove Windows staging configuration
+      ansible.windows.win_file:
+        path: C:\ProgramData\HomeLabMonitoring\Alloy\candidate.alloy
+        state: absent
+      no_log: true
+      diff: false
+
+- name: Configure official Windows service with loopback management and persistent storage
+  ansible.windows.win_regedit:
+    path: HKLM:\Software\GrafanaLabs\Alloy
+    name: Arguments
+    type: multistring
+    data:
+      - run
+      - C:\ProgramData\HomeLabMonitoring\Alloy\config.alloy
+      - --storage.path=C:\ProgramData\HomeLabMonitoring\Alloy\data
+      - --server.http.listen-addr=127.0.0.1:12345
+      - --server.http.enable-pprof=false
+      - --server.http.disable-support-bundle=true
+      - --disable-reporting
+  no_log: true
+  diff: false
+  notify: Restart Windows Alloy
+
+- name: Run Windows collector as the official SYSTEM service
+  ansible.windows.win_service:
+    name: Alloy
+    username: LocalSystem
+    start_mode: auto
+  notify: Restart Windows Alloy
+
+- name: Apply validated Windows collector changes
+  ansible.builtin.meta: flush_handlers
+
+- name: Enable and start Windows collector
+  ansible.windows.win_service:
+    name: Alloy
+    start_mode: auto
+    state: started

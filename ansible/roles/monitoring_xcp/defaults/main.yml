@@ -1,0 +1,6 @@
+---
+xcp_metrics_enabled: false
+xcp_collector_expected_hostname: xoa
+xcp_metrics_node: /usr/local/bin/node
+xcp_metrics_library_dir: "{{ ansible_facts['user_dir'] }}/.local/lib/home-lab-xcp-metrics"
+xcp_metrics_private_dir: "{{ ansible_facts['user_dir'] }}/.config/home-lab-xcp-metrics"

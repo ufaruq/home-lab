@@ -1,0 +1,42 @@
+---
+- name: Require explicit network-device deployment authorization
+  ansible.builtin.assert:
+    that:
+      - monitoring_access_verified is sameas true
+      - monitoring_deployment_approved is sameas true
+      - >-
+        (monitoring_opnsense_syslog_transport in ['tcp4', 'tcp6'] and
+         monitoring_opnsense_syslog_vpn_verified is sameas true) or
+        (monitoring_opnsense_syslog_transport in ['tls4', 'tls6'] and
+         monitoring_opnsense_syslog_tls_relay_verified is sameas true and
+         monitoring_opnsense_syslog_tls_ca_sha256 is match('^[a-fA-F0-9]{64}$') and
+         monitoring_opnsense_syslog_certificate is match('^[a-fA-F0-9]{8}(-[a-fA-F0-9]{4}){3}-[a-fA-F0-9]{12}$'))
+      - monitoring_opnsense_url is match('^https://')
+      - monitoring_opnsense_api_key | length > 0
+      - monitoring_opnsense_api_secret | length > 0
+    fail_msg: Verified API access, approval and encrypted syslog transport are required. TCP needs verified WireGuard/IPsec; TLS needs an existing verified relay and trusted CA/client certificate.
+  no_log: true
+
+- name: Reconcile and read back native syslog destination over verified HTTPS
+  ansible.builtin.command:
+    argv:
+      - '{{ ansible_playbook_python }}'
+      - '{{ role_path }}/../../../monitoring/opnsense/syslog.py'
+    stdin: >-
+      {{ {'access_verified': monitoring_access_verified,
+          'deployment_approved': monitoring_deployment_approved,
+          'url': monitoring_opnsense_url, 'key': monitoring_opnsense_api_key,
+          'secret': monitoring_opnsense_api_secret, 'ca_file': monitoring_opnsense_ca_file,
+          'destination': monitoring_opnsense_syslog_address,
+          'port': monitoring_opnsense_syslog_port,
+          'transport': monitoring_opnsense_syslog_transport,
+          'certificate': monitoring_opnsense_syslog_certificate,
+          'vpn_verified': monitoring_opnsense_syslog_vpn_verified,
+          'tls_relay_verified': monitoring_opnsense_syslog_tls_relay_verified,
+          'tls_ca_sha256': monitoring_opnsense_syslog_tls_ca_sha256} | to_json }}
+  delegate_to: localhost
+  become: false
+  register: monitoring_opnsense_result
+  changed_when: (monitoring_opnsense_result.stdout | from_json).changed
+  no_log: true
+  diff: false

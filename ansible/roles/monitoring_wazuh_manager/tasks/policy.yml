@@ -1,0 +1,137 @@
+---
+- name: Allocate private policy validation workspace
+  ansible.builtin.tempfile:
+    state: directory
+    path: /var/ossec/etc
+    prefix: .homelab-wazuh-policy-
+  register: monitoring_policy_stage
+
+- name: Validate and activate repository-owned policy
+  block:
+    - name: Stage repository policy sources
+      ansible.builtin.copy:
+        src: '{{ role_path }}/../../../monitoring/wazuh/'
+        dest: '{{ monitoring_policy_stage.path }}/source/'
+        mode: preserve
+        directory_mode: '0700'
+
+    - name: Build validation view preserving all unrelated manager configuration
+      ansible.builtin.command:
+        argv: [python3, '{{ monitoring_policy_stage.path }}/source/stage_policy.py', /var/ossec, '{{ monitoring_policy_stage.path }}']
+      changed_when: false
+
+    - name: Allow Wazuh validation process to read private staged policy
+      ansible.builtin.file:
+        path: '{{ monitoring_policy_stage.path }}'
+        owner: root
+        group: wazuh
+        mode: 'u=rwX,g=rX,o='
+        recurse: true
+
+    - name: Validate staged custom decoders and rules with installed Wazuh
+      ansible.builtin.command:
+        argv: [/var/ossec/bin/wazuh-analysisd, -t, -c, '{{ monitoring_policy_stage.path }}/ossec-validation.conf']
+      changed_when: false
+
+    - name: Validate every centralized agent group before installation
+      ansible.builtin.command:
+        argv: [/var/ossec/bin/verify-agent-conf, -f, '{{ monitoring_policy_stage.path }}/source/groups/{{ item }}/agent.conf']
+      loop: [homelab-linux, homelab-windows, homelab-lab]
+      changed_when: false
+
+    - name: Create only repository-owned agent groups with official management tool
+      ansible.builtin.command:
+        argv: [/var/ossec/bin/agent_groups, -a, -g, '{{ item }}', -q]
+        creates: '/var/ossec/etc/shared/{{ item }}'
+      loop: [homelab-linux, homelab-windows, homelab-lab]
+
+    - name: Restrict centralized group directory permissions
+      ansible.builtin.file:
+        path: '/var/ossec/etc/shared/{{ item }}'
+        state: directory
+        owner: root
+        group: wazuh
+        mode: '0750'
+      loop: [homelab-linux, homelab-windows, homelab-lab]
+
+    - name: Install validated repository-owned files with private backups
+      ansible.builtin.copy:
+        src: '{{ monitoring_policy_stage.path }}/source/{{ item.source }}'
+        dest: '/var/ossec/etc/{{ item.destination }}'
+        remote_src: true
+        owner: root
+        group: wazuh
+        mode: '0640'
+        backup: true
+      loop:
+        - {source: rules/homelab_rules.xml, destination: rules/homelab_rules.xml}
+        - {source: decoders/homelab_decoders.xml, destination: decoders/homelab_decoders.xml}
+        - {source: groups/homelab-linux/agent.conf, destination: shared/homelab-linux/agent.conf}
+        - {source: groups/homelab-windows/agent.conf, destination: shared/homelab-windows/agent.conf}
+        - {source: groups/homelab-lab/agent.conf, destination: shared/homelab-lab/agent.conf}
+      register: monitoring_policy_copies
+
+    - name: Activate changed manager policy and verify service
+      ansible.builtin.service:
+        name: wazuh-manager
+        state: restarted
+        enabled: true
+      when: monitoring_policy_copies.changed
+
+    - name: Copy manager status validator into private workspace
+      ansible.builtin.copy:
+        src: validate_status.py
+        dest: '{{ monitoring_policy_stage.path }}/validate-status.py'
+        owner: root
+        group: wazuh
+        mode: '0640'
+
+    - name: Read structured manager health after policy validation
+      ansible.builtin.command:
+        argv: [/var/ossec/bin/wazuh-control, -j, status]
+      register: monitoring_manager_health
+      changed_when: false
+      failed_when: false
+
+    - name: Require running core daemons while allowing configured disabled features
+      ansible.builtin.command:
+        argv:
+          - python3
+          - '{{ monitoring_policy_stage.path }}/validate-status.py'
+          - '{{ monitoring_manager_health.rc | string }}'
+          - /var/ossec/etc/ossec.conf
+        stdin: '{{ monitoring_manager_health.stdout }}'
+      changed_when: false
+  rescue:
+    - name: Restore prior versions of changed policy files
+      ansible.builtin.copy:
+        src: '{{ item.backup_file }}'
+        dest: '{{ item.dest }}'
+        remote_src: true
+        owner: root
+        group: wazuh
+        mode: '0640'
+      loop: '{{ monitoring_policy_copies.results | default([]) }}'
+      when: item.backup_file is defined
+
+    - name: Remove only newly created owned policy files on failed activation
+      ansible.builtin.file:
+        path: '{{ item.dest }}'
+        state: absent
+      loop: '{{ monitoring_policy_copies.results | default([]) }}'
+      when: item.changed | default(false) and item.backup_file is not defined and item.dest is defined
+
+    - name: Restart restored manager when file activation had begun
+      ansible.builtin.service:
+        name: wazuh-manager
+        state: restarted
+      when: monitoring_policy_copies is defined and monitoring_policy_copies.changed | default(false)
+
+    - name: Report failed policy validation or activation
+      ansible.builtin.fail:
+        msg: Wazuh policy validation/activation failed. Prior owned files restored where activation had begun; inspect service before retrying.
+  always:
+    - name: Remove private temporary validation copy
+      ansible.builtin.file:
+        path: '{{ monitoring_policy_stage.path }}'
+        state: absent

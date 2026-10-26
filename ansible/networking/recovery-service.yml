@@ -1,0 +1,19 @@
+---
+- name: Maintain declared recovery aliases after native network startup
+  hosts: xcp_control
+  gather_facts: false
+  vars:
+    network_profile_apply: false
+    recovery_service_encoded: "{{ lookup('ansible.builtin.file', playbook_dir ~ '/recovery_service.py') | b64encode }}"
+    recovery_service_runner: "import base64; exec(compile(base64.b64decode('{{ recovery_service_encoded }}'), '<recovery-service>', 'exec'))"
+  tasks:
+    - name: Require an explicit boolean apply selection
+      ansible.builtin.assert:
+        that: network_profile_apply is boolean
+    - name: Reconcile explicitly declared recovery service assets
+      when: host_network_recovery is defined
+      ansible.builtin.raw: "/usr/bin/python -c {{ recovery_service_runner | quote }} --policy-base64 {{ host_network_recovery | to_json | b64encode | quote }} {{ '--apply' if network_profile_apply and not ansible_check_mode else '' }}"
+      check_mode: false
+      register: recovery_service_result
+      changed_when: (recovery_service_result.stdout_lines | select('match', '^[{]') | list | last | from_json).changed
+      no_log: true

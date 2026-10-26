@@ -1,0 +1,17 @@
+# Copy to an owner-only private file OUTSIDE the checkout, not terraform.tfvars.
+# This standalone root manages dashboards only. The primary composition separately
+# guards the Trial collector path and checks the live edition before plan/apply.
+free_plan_verified       = false
+unbilled_trial_dashboard_only_verified = true
+prometheus_datasource_uid = "REPLACE_WITH_EXISTING_PROM_UID"
+loki_datasource_uid       = "REPLACE_WITH_EXISTING_LOKI_UID"
+
+# Include only reachable collectors that were explicitly deployed and should run.
+# Do not copy the full historical inventory; many guests may be halted/diskless.
+expected_linux_hosts   = []
+expected_windows_hosts = []
+
+alerts_enabled              = false
+existing_contact_point_name = null
+enable_security_dashboard   = false
+usage_datasource_uid         = null

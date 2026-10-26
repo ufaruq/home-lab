@@ -1,0 +1,70 @@
+---
+- name: Read installed endpoint packages
+  ansible.builtin.package_facts:
+    manager: auto
+
+- name: Detect retained endpoint identity before any fresh install
+  ansible.builtin.stat:
+    path: /var/ossec
+  register: monitoring_agent_directory
+
+- name: Install only absent explicitly approved Linux agents
+  ansible.builtin.include_tasks: linux-install.yml
+  when: "'wazuh-agent' not in ansible_facts.packages"
+
+- name: Re-read installed endpoint package release
+  ansible.builtin.package_facts:
+    manager: auto
+
+- name: Preserve installed release and reject automatic upgrades
+  ansible.builtin.assert:
+    that:
+      - "'wazuh-agent' in ansible_facts.packages"
+      - ansible_facts.packages['wazuh-agent'][0].version == monitoring_wazuh_agent_version ~ '-1'
+
+- name: Validate existing connection without altering local policy or enrollment
+  ansible.builtin.command:
+    argv:
+      - python3
+      - -c
+      - >-
+        import pathlib,sys,xml.etree.ElementTree as E;
+        r=E.fromstring('<root>'+pathlib.Path('/var/ossec/etc/ossec.conf').read_text()+'</root>');
+        s=r.findall('.//client/server');
+        assert any(x.findtext('address')==sys.argv[1] and x.findtext('port','1514')==sys.argv[2] for x in s),'Existing manager connection differs; review migration separately';
+        assert sys.argv[3]!='homelab-lab' or sys.argv[4]=='True' or r.findtext('.//active-response/disabled')=='yes','Lab active response must already be disabled or explicitly approve the scoped local change'
+      - '{{ monitoring_wazuh_manager_address }}'
+      - '{{ monitoring_wazuh_manager_port | string }}'
+      - '{{ monitoring_wazuh_agent_group }}'
+      - '{{ (monitoring_wazuh_disable_active_response_approved is sameas true or not monitoring_agent_directory.stat.exists) | string }}'
+  changed_when: false
+  no_log: true
+
+- name: Verify Linux agent configuration with installed binary
+  ansible.builtin.command: /var/ossec/bin/wazuh-agentd -t
+  changed_when: false
+
+- name: Enforce local endpoint response disablement
+  ansible.builtin.include_tasks: linux-response.yml
+  when: monitoring_wazuh_disable_active_response_approved is sameas true or not monitoring_agent_directory.stat.exists
+
+- name: Ensure validated agent is running
+  ansible.builtin.service:
+    name: wazuh-agent
+    state: started
+    enabled: true
+
+- name: Read Linux agent health
+  ansible.builtin.command: /var/ossec/bin/wazuh-control status
+  register: monitoring_agent_health
+  changed_when: false
+  failed_when: monitoring_agent_health.rc != 0 or 'not running' in monitoring_agent_health.stdout
+
+- name: Wait for verified enrollment without replacing identity
+  ansible.builtin.stat:
+    path: /var/ossec/etc/client.keys
+  register: monitoring_agent_key
+  until: monitoring_agent_key.stat.exists and monitoring_agent_key.stat.size | default(0) > 0
+  retries: 6
+  delay: 5
+  no_log: true

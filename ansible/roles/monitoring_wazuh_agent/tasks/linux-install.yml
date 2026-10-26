@@ -1,0 +1,78 @@
+---
+- name: Require reviewed checksum and private identity-verified enrollment
+  ansible.builtin.assert:
+    that:
+      - monitoring_wazuh_agent_install_approved is sameas true
+      - not monitoring_agent_directory.stat.exists
+      - ansible_facts.architecture == 'x86_64'
+      - monitoring_wazuh_agent_package_sha256 is match('^[a-f0-9]{64}$')
+      - monitoring_wazuh_enrollment_password | length > 0
+      - monitoring_wazuh_manager_ca_source | length > 0
+      - monitoring_wazuh_enrollment_tls_verified is sameas true
+      - "'-----BEGIN CERTIFICATE-----' in lookup('ansible.builtin.file', monitoring_wazuh_manager_ca_source)"
+      - "'PRIVATE KEY' not in lookup('ansible.builtin.file', monitoring_wazuh_manager_ca_source)"
+    fail_msg: Fresh agents require reviewed CA-authenticated TLS enrollment, an existing verified manager certificate, clean identity directory, exact package checksum and private password. Default unverified enrollment is rejected.
+  no_log: true
+
+- name: Place reviewed manager trust certificate before enrollment
+  ansible.builtin.copy:
+    src: '{{ monitoring_wazuh_manager_ca_source }}'
+    dest: /etc/homelab-wazuh-manager-ca.pem
+    owner: root
+    group: root
+    mode: '0644'
+
+- name: Download only exact official Wazuh agent package
+  ansible.builtin.get_url:
+    url: >-
+      {{ 'https://packages.wazuh.com/4.x/apt/pool/main/w/wazuh-agent/wazuh-agent_' ~ monitoring_wazuh_agent_version ~ '-1_amd64.deb'
+          if ansible_facts.os_family == 'Debian' else
+          'https://packages.wazuh.com/4.x/yum/wazuh-agent-' ~ monitoring_wazuh_agent_version ~ '-1.x86_64.rpm' }}
+    dest: '/root/homelab-wazuh-agent-{{ monitoring_wazuh_agent_version }}.{{ "deb" if ansible_facts.os_family == "Debian" else "rpm" }}'
+    checksum: 'sha256:{{ monitoring_wazuh_agent_package_sha256 }}'
+    mode: '0600'
+    validate_certs: true
+  register: monitoring_agent_package
+
+- name: Install pinned Debian agent with verified manager enrollment
+  ansible.builtin.apt:
+    deb: '{{ monitoring_agent_package.dest }}'
+    state: present
+  environment: &enrollment
+    WAZUH_MANAGER: '{{ monitoring_wazuh_manager_address }}'
+    WAZUH_MANAGER_PORT: '{{ monitoring_wazuh_manager_port | string }}'
+    WAZUH_REGISTRATION_SERVER: '{{ monitoring_wazuh_manager_address }}'
+    WAZUH_REGISTRATION_PASSWORD: '{{ monitoring_wazuh_enrollment_password }}'
+    WAZUH_REGISTRATION_CA: /etc/homelab-wazuh-manager-ca.pem
+    WAZUH_AGENT_GROUP: '{{ monitoring_wazuh_agent_group }}'
+    WAZUH_AGENT_NAME: '{{ inventory_hostname }}'
+  when: ansible_facts.os_family == 'Debian'
+  no_log: true
+  diff: false
+
+- name: Install pinned RPM agent with verified manager enrollment
+  ansible.builtin.dnf:
+    name: '{{ monitoring_agent_package.dest }}'
+    state: present
+    disable_gpg_check: false
+  environment: *enrollment
+  when: ansible_facts.os_family == 'RedHat'
+  no_log: true
+  diff: false
+
+- name: Verify installed enrollment cannot fall back to an unverified manager
+  ansible.builtin.command:
+    argv:
+      - python3
+      - -c
+      - >-
+        import pathlib,stat,xml.etree.ElementTree as E;
+        root=pathlib.Path('/var/ossec');
+        r=E.fromstring('<root>'+(root/'etc/ossec.conf').read_text()+'</root>');
+        assert r.findtext('.//client/enrollment/server_ca_path')=='/etc/homelab-wazuh-manager-ca.pem','Missing verified enrollment CA';
+        p=r.findtext('.//client/enrollment/authorization_pass_path') or 'etc/authd.pass';
+        p=pathlib.Path(p); p=p if p.is_absolute() else root/p;
+        assert p.resolve()==root/'etc/authd.pass','Unreviewed enrollment password path';
+        s=p.stat(); assert s.st_size>0 and stat.S_IMODE(s.st_mode) in (0o600,0o640) and s.st_uid==0,'Enrollment password must be private and root owned'
+  changed_when: false
+  no_log: true

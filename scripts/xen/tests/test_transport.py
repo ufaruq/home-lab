@@ -41,7 +41,7 @@ class TransportTests(unittest.TestCase):
                 self.assertFalse(any('SSH_ASKPASS_REQUIRE' in c.kwargs.get('env',{}) for c in run.call_args_list))
     def test_cold_master_is_pinned_password_capable_and_password_not_in_argv(self):
         with tempfile.TemporaryDirectory() as directory:
-            env,pin=self.setup_context(directory)
+            env,pin=self.setup_context(directory,{'XEN_SSH_BIND_INTERFACE':'en7'})
             results=[1,1,0,0]
             def result(*args,**kwargs):return subprocess.CompletedProcess(args[0],results.pop(0),'','')
             with patch.dict(os.environ,env,clear=True),patch.object(transport.subprocess,'run',side_effect=result) as run:
@@ -51,6 +51,7 @@ class TransportTests(unittest.TestCase):
                 for expected in ['StrictHostKeyChecking=yes','HostKeyAlias=example-host','UserKnownHostsFile='+str(pin.resolve()),'ControlPersist=7200','NumberOfPasswordPrompts=1','ConnectTimeout=5','GlobalKnownHostsFile=/dev/null','UpdateHostKeys=no']:
                     self.assertIn(expected,args)
                 self.assertIn('-fNT',args)
+                self.assertEqual(args[args.index('-B')+1],'en7')
                 self.assertEqual(master.kwargs['env']['SSH_ASKPASS_REQUIRE'],'force')
                 self.assertNotIn('XOA_TOKEN',master.kwargs['env'])
                 self.assertNotIn('XOA_URL',master.kwargs['env'])
@@ -59,6 +60,22 @@ class TransportTests(unittest.TestCase):
                 self.assertNotIn('never-in-argv',' '.join(args))
                 self.assertNotEqual(os.environ['XEN_SSH_CONTROL'],'/old/master')
                 opened.close()
+    def test_unsafe_bind_interface_rejected_before_ssh(self):
+        with tempfile.TemporaryDirectory() as directory:
+            for interface in ['-oProxyCommand=bad','en7; touch /tmp/bad','en7\nother','en 7']:
+                env,_=self.setup_context(directory,{'XEN_SSH_BIND_INTERFACE':interface})
+                with self.subTest(interface=interface),patch.dict(os.environ,env,clear=True),patch.object(transport.subprocess,'run') as runner:
+                    with self.assertRaises(ValueError):transport.open_transport(api=False)
+                    runner.assert_not_called()
+    def test_interface_binding_never_reuses_a_legacy_or_other_interface_master(self):
+        controls=[]
+        with tempfile.TemporaryDirectory() as directory:
+            for interface in ['en7','en8']:
+                env,_=self.setup_context(directory,{'XEN_SSH_BIND_INTERFACE':interface})
+                with patch.dict(os.environ,env,clear=True),patch.object(transport.subprocess,'run',return_value=subprocess.CompletedProcess([],0,'','')) as runner:
+                    opened=transport.open_transport(api=False);controls.append(opened.control);opened.close()
+                    self.assertFalse(any('/old/master' in call.args[0] for call in runner.call_args_list))
+            self.assertNotEqual(*controls)
     def test_forward_failure_is_closed_and_does_not_replace_url_or_cancel_unowned_forward(self):
         with tempfile.TemporaryDirectory() as directory:
             env,pin=self.setup_context(directory)

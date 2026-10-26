@@ -1,0 +1,119 @@
+---
+- name: Refuse a root login or an unexpected deployment endpoint
+  ansible.builtin.assert:
+    that:
+      - ansible_facts['system'] == 'Linux'
+      - ansible_facts['user_uid'] | int != 0
+      - ansible_facts['hostname'] == xcp_collector_expected_hostname
+      - xcp_collector_expected_hostname != xcp_metrics_config.host_name
+    fail_msg: Deploy only to the verified unprivileged external XOA account; never dom0.
+
+- name: Read Xen domain capabilities when present
+  ansible.builtin.command: cat /proc/xen/capabilities
+  register: xcp_domain_capabilities
+  changed_when: false
+  failed_when: false
+
+- name: Refuse any control domain endpoint
+  ansible.builtin.assert:
+    that: "'control_d' not in xcp_domain_capabilities.stdout"
+
+- name: Remove the schedule when collection is explicitly disabled
+  ansible.builtin.cron:
+    name: Home lab XCP host metrics
+    state: absent
+  when: not xcp_metrics_enabled
+
+- name: Remove reader and cloud credentials when collection is disabled
+  ansible.builtin.file:
+    path: "{{ xcp_metrics_private_dir }}/config.json"
+    state: absent
+  when: not xcp_metrics_enabled
+  no_log: true
+
+- name: Deploy enabled collection
+  when: xcp_metrics_enabled
+  block:
+    - name: Check existing runtime prerequisites without installing packages
+      ansible.builtin.stat:
+        path: "{{ item }}"
+        follow: true
+      loop:
+        - "{{ xcp_metrics_node }}"
+        - /usr/bin/flock
+        - /usr/bin/crontab
+        - /usr/local/lib/node_modules/xo-server/node_modules/ws/index.js
+      register: xcp_runtime_files
+
+    - name: Require trusted existing runtime files
+      ansible.builtin.assert:
+        that:
+          - item.stat.exists
+          - item.stat.isreg
+          - item.stat.uid | int == 0
+          - not item.stat.wgrp
+          - not item.stat.woth
+      loop: "{{ xcp_runtime_files.results }}"
+      loop_control:
+        label: "{{ item.item }}"
+
+    - name: Create private collector directories
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: directory
+        mode: '0700'
+      loop:
+        - "{{ xcp_metrics_library_dir }}"
+        - "{{ xcp_metrics_private_dir }}"
+
+    - name: Deploy versioned collector sources
+      ansible.builtin.copy:
+        src: "{{ playbook_dir }}/../../monitoring/xcp/{{ item }}"
+        dest: "{{ xcp_metrics_library_dir }}/{{ item }}"
+        mode: '0600'
+      loop: [metrics.cjs, vm-metrics.cjs, vm-runtime.cjs, xo.cjs, collector.cjs, setup-reader.cjs]
+
+    - name: Reconcile the dedicated XOA viewer account
+      ansible.builtin.command:
+        argv: ["{{ xcp_metrics_node }}", "{{ xcp_metrics_library_dir }}/setup-reader.cjs"]
+        stdin: "{{ {'admin': {'email': xcp_admin_email, 'password': xcp_admin_password}, 'email': xcp_metrics_config.xoa_email, 'password': xcp_metrics_config.xoa_password, 'pool_id': xcp_metrics_config.pool_id} | to_json }}"
+      register: xcp_reader_setup
+      changed_when: (xcp_reader_setup.stdout | from_json).changed
+      no_log: true
+
+    - name: Write only the reader and write-only Cloud credentials
+      ansible.builtin.copy:
+        content: "{{ xcp_metrics_config | to_nice_json }}\n"
+        dest: "{{ xcp_metrics_private_dir }}/config.json"
+        mode: '0600'
+      diff: false
+      no_log: true
+
+    - name: Check current host statistics using only the viewer account
+      ansible.builtin.command:
+        argv: ["{{ xcp_metrics_node }}", "{{ xcp_metrics_library_dir }}/collector.cjs", --check, "{{ xcp_metrics_private_dir }}/config.json"]
+      changed_when: false
+
+    - name: Schedule one bounded upload per minute with overlap protection
+      ansible.builtin.cron:
+        name: Home lab XCP host metrics
+        minute: '*'
+        job: "/usr/bin/flock -n {{ (xcp_metrics_private_dir + '/collector.lock') | quote }} {{ xcp_metrics_node | quote }} {{ (xcp_metrics_library_dir + '/collector.cjs') | quote }} --run {{ (xcp_metrics_private_dir + '/config.json') | quote }} >/dev/null 2>&1"
+
+    - name: Send the first real host sample and report delivery status
+      ansible.builtin.command:
+        argv: [/usr/bin/flock, -w, '50', "{{ xcp_metrics_private_dir }}/collector.lock", "{{ xcp_metrics_node }}", "{{ xcp_metrics_library_dir }}/collector.cjs", --run, "{{ xcp_metrics_private_dir }}/config.json"]
+      register: xcp_first_sample
+      changed_when: false
+      failed_when: xcp_first_sample.rc not in [0, 1]
+
+    - name: Require successful source collection and cloud delivery
+      ansible.builtin.assert:
+        that:
+          - (xcp_first_sample.stdout | from_json).collection_ok
+          - (xcp_first_sample.stdout | from_json).delivery_ok
+        fail_msg: Inspect the private collector status.json for the sanitized failure category.
+
+    - name: Report the collector's non-secret status
+      ansible.builtin.debug:
+        msg: "{{ xcp_first_sample.stdout | from_json }}"

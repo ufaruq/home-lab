@@ -1,0 +1,829 @@
+{
+  "uid": "homelab-xcp-vms",
+  "title": "XCP-ng VM resources",
+  "description": "Agentless VM resources for inventory VMs except Parrot. Managed by Terraform and Ansible.",
+  "schemaVersion": 39,
+  "version": 1,
+  "editable": false,
+  "tags": [
+    "homelab",
+    "xcp-ng",
+    "terraform"
+  ],
+  "timezone": "browser",
+  "refresh": "1m",
+  "time": {
+    "from": "now-1h",
+    "to": "now"
+  },
+  "links": [
+    {
+      "title": "Hypervisor metrics",
+      "url": "/d/homelab-xcp-host",
+      "type": "link"
+    }
+  ],
+  "templating": {
+    "list": [
+      {
+        "name": "vm",
+        "label": "VM",
+        "type": "query",
+        "datasource": {
+          "type": "prometheus",
+          "uid": "${prometheus_uid}"
+        },
+        "query": {
+          "query": "label_values(homelab_xcp_vm_power_state{host=\"datacenter1\"}, vm)",
+          "refId": "vm-values"
+        },
+        "refresh": 1,
+        "multi": true,
+        "includeAll": true,
+        "allValue": ".*",
+        "current": {
+          "selected": true,
+          "text": "All",
+          "value": "$__all"
+        },
+        "sort": 1,
+        "options": []
+      }
+    ]
+  },
+  "panels": [
+    {
+      "id": 1,
+      "title": "VM power state",
+      "type": "stat",
+      "gridPos": {
+        "x": 0,
+        "y": 0,
+        "w": 12,
+        "h": 4
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${prometheus_uid}"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "homelab_xcp_vm_power_state{host=\"datacenter1\",job=\"homelab_xcp\",vm=~\"$${vm:regex}\"}",
+          "legendFormat": "{{vm}}",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${prometheus_uid}"
+          },
+          "instant": true,
+          "range": false
+        }
+      ],
+      "description": "All selected VMs, including powered-off guests. Parrot is excluded. Missing identity is -1.",
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "min": 0,
+          "noValue": "No current sample",
+          "mappings": [
+            {
+              "type": "value",
+              "options": {
+                "-1": {
+                  "text": "Missing",
+                  "color": "red"
+                },
+                "0": {
+                  "text": "Halted",
+                  "color": "gray"
+                },
+                "1": {
+                  "text": "Running",
+                  "color": "green"
+                },
+                "2": {
+                  "text": "Paused",
+                  "color": "orange"
+                },
+                "3": {
+                  "text": "Suspended",
+                  "color": "orange"
+                }
+              }
+            }
+          ]
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi"
+        },
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "auto",
+        "graphMode": "none"
+      }
+    },
+    {
+      "id": 2,
+      "title": "Resource statistics available",
+      "type": "stat",
+      "gridPos": {
+        "x": 12,
+        "y": 0,
+        "w": 12,
+        "h": 4
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${prometheus_uid}"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "homelab_xcp_vm_stats_available{host=\"datacenter1\",job=\"homelab_xcp\",vm=~\"$${vm:regex}\"}",
+          "legendFormat": "{{vm}}",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${prometheus_uid}"
+          },
+          "instant": true,
+          "range": false
+        }
+      ],
+      "description": "1 means fresh resource statistics; 0 is expected for halted guests. Check collector health for failures.",
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "min": 0,
+          "noValue": "No current sample"
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi"
+        },
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "auto",
+        "graphMode": "none"
+      }
+    },
+    {
+      "id": 3,
+      "title": "CPU used",
+      "type": "timeseries",
+      "gridPos": {
+        "x": 0,
+        "y": 4,
+        "w": 12,
+        "h": 8
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${prometheus_uid}"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "homelab_xcp_vm_cpu_used_percent{host=\"datacenter1\",job=\"homelab_xcp\",vm=~\"$${vm:regex}\"} and on(vm) (homelab_xcp_vm_power_state{host=\"datacenter1\",job=\"homelab_xcp\",vm=~\"$${vm:regex}\"} == 1) and on(vm) (homelab_xcp_vm_stats_available{host=\"datacenter1\",job=\"homelab_xcp\",vm=~\"$${vm:regex}\"} == 1)",
+          "legendFormat": "{{vm}}",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${prometheus_uid}"
+          },
+          "instant": false,
+          "range": true
+        }
+      ],
+      "description": "Mean utilization across assigned vCPUs.",
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "min": 0,
+          "noValue": "No current sample",
+          "max": 100
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi"
+        },
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "auto",
+        "graphMode": "none"
+      }
+    },
+    {
+      "id": 4,
+      "title": "Assigned RAM",
+      "type": "timeseries",
+      "gridPos": {
+        "x": 12,
+        "y": 4,
+        "w": 12,
+        "h": 8
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${prometheus_uid}"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "homelab_xcp_vm_memory_assigned_bytes{host=\"datacenter1\",job=\"homelab_xcp\",vm=~\"$${vm:regex}\"} and on(vm) (homelab_xcp_vm_power_state{host=\"datacenter1\",job=\"homelab_xcp\",vm=~\"$${vm:regex}\"} == 1) and on(vm) (homelab_xcp_vm_stats_available{host=\"datacenter1\",job=\"homelab_xcp\",vm=~\"$${vm:regex}\"} == 1)",
+          "legendFormat": "{{vm}}",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${prometheus_uid}"
+          },
+          "instant": false,
+          "range": true
+        }
+      ],
+      "description": "",
+      "fieldConfig": {
+        "defaults": {
+          "unit": "bytes",
+          "min": 0,
+          "noValue": "No current sample"
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi"
+        },
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "auto",
+        "graphMode": "none"
+      }
+    },
+    {
+      "id": 5,
+      "title": "Guest RAM used",
+      "type": "timeseries",
+      "gridPos": {
+        "x": 0,
+        "y": 12,
+        "w": 12,
+        "h": 8
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${prometheus_uid}"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "100 * homelab_xcp_vm_memory_used_bytes{host=\"datacenter1\",job=\"homelab_xcp\",vm=~\"$${vm:regex}\"} / homelab_xcp_vm_memory_assigned_bytes{host=\"datacenter1\",job=\"homelab_xcp\",vm=~\"$${vm:regex}\"} and on(vm) (homelab_xcp_vm_power_state{host=\"datacenter1\",job=\"homelab_xcp\",vm=~\"$${vm:regex}\"} == 1) and on(vm) (homelab_xcp_vm_stats_available{host=\"datacenter1\",job=\"homelab_xcp\",vm=~\"$${vm:regex}\"} == 1)",
+          "legendFormat": "{{vm}}",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${prometheus_uid}"
+          },
+          "instant": false,
+          "range": true
+        }
+      ],
+      "description": "Requires a free-memory measurement from guest tools. Unsupported guests remain absent.",
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "min": 0,
+          "noValue": "No current sample",
+          "max": 100
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi"
+        },
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "auto",
+        "graphMode": "none"
+      }
+    },
+    {
+      "id": 6,
+      "title": "Guest uptime",
+      "type": "timeseries",
+      "gridPos": {
+        "x": 12,
+        "y": 12,
+        "w": 12,
+        "h": 8
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${prometheus_uid}"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "homelab_xcp_vm_uptime_seconds{host=\"datacenter1\",job=\"homelab_xcp\",vm=~\"$${vm:regex}\"} and on(vm) (homelab_xcp_vm_power_state{host=\"datacenter1\",job=\"homelab_xcp\",vm=~\"$${vm:regex}\"} == 1) and on(vm) (homelab_xcp_vm_stats_available{host=\"datacenter1\",job=\"homelab_xcp\",vm=~\"$${vm:regex}\"} == 1)",
+          "legendFormat": "{{vm}}",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${prometheus_uid}"
+          },
+          "instant": false,
+          "range": true
+        }
+      ],
+      "description": "",
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "min": 0,
+          "noValue": "No current sample"
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi"
+        },
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "auto",
+        "graphMode": "none"
+      }
+    },
+    {
+      "id": 7,
+      "title": "Virtual disk provisioned capacity",
+      "type": "timeseries",
+      "gridPos": {
+        "x": 0,
+        "y": 20,
+        "w": 12,
+        "h": 8
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${prometheus_uid}"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "homelab_xcp_vm_disk_provisioned_bytes{host=\"datacenter1\",job=\"homelab_xcp\",vm=~\"$${vm:regex}\"} and on(vm) (homelab_xcp_vm_power_state{host=\"datacenter1\",job=\"homelab_xcp\",vm=~\"$${vm:regex}\"} == 1) and on(vm) (homelab_xcp_vm_stats_available{host=\"datacenter1\",job=\"homelab_xcp\",vm=~\"$${vm:regex}\"} == 1)",
+          "legendFormat": "{{vm}}",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${prometheus_uid}"
+          },
+          "instant": false,
+          "range": true
+        }
+      ],
+      "description": "Sum of attached non-CD virtual disk capacities. This is not guest filesystem usage.",
+      "fieldConfig": {
+        "defaults": {
+          "unit": "bytes",
+          "min": 0,
+          "noValue": "No current sample"
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi"
+        },
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "auto",
+        "graphMode": "none"
+      }
+    },
+    {
+      "id": 8,
+      "title": "Virtual disk backing allocation",
+      "type": "timeseries",
+      "gridPos": {
+        "x": 12,
+        "y": 20,
+        "w": 12,
+        "h": 8
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${prometheus_uid}"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "homelab_xcp_vm_disk_allocated_bytes{host=\"datacenter1\",job=\"homelab_xcp\",vm=~\"$${vm:regex}\"} and on(vm) (homelab_xcp_vm_power_state{host=\"datacenter1\",job=\"homelab_xcp\",vm=~\"$${vm:regex}\"} == 1) and on(vm) (homelab_xcp_vm_stats_available{host=\"datacenter1\",job=\"homelab_xcp\",vm=~\"$${vm:regex}\"} == 1)",
+          "legendFormat": "{{vm}}",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${prometheus_uid}"
+          },
+          "instant": false,
+          "range": true
+        }
+      ],
+      "description": "XOA VDI physical allocation, when supplied by storage. Snapshots and thin provisioning affect allocation; this is not guest filesystem usage.",
+      "fieldConfig": {
+        "defaults": {
+          "unit": "bytes",
+          "min": 0,
+          "noValue": "No current sample"
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi"
+        },
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "auto",
+        "graphMode": "none"
+      }
+    },
+    {
+      "id": 9,
+      "title": "VM network throughput",
+      "type": "timeseries",
+      "gridPos": {
+        "x": 0,
+        "y": 28,
+        "w": 12,
+        "h": 8
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${prometheus_uid}"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "homelab_xcp_vm_network_receive_bytes_per_second{host=\"datacenter1\",job=\"homelab_xcp\",vm=~\"$${vm:regex}\"} and on(vm) (homelab_xcp_vm_power_state{host=\"datacenter1\",job=\"homelab_xcp\",vm=~\"$${vm:regex}\"} == 1) and on(vm) (homelab_xcp_vm_stats_available{host=\"datacenter1\",job=\"homelab_xcp\",vm=~\"$${vm:regex}\"} == 1)",
+          "legendFormat": "RX {{vm}} {{device}}",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${prometheus_uid}"
+          },
+          "instant": false,
+          "range": true
+        },
+        {
+          "refId": "B",
+          "expr": "homelab_xcp_vm_network_transmit_bytes_per_second{host=\"datacenter1\",job=\"homelab_xcp\",vm=~\"$${vm:regex}\"} and on(vm) (homelab_xcp_vm_power_state{host=\"datacenter1\",job=\"homelab_xcp\",vm=~\"$${vm:regex}\"} == 1) and on(vm) (homelab_xcp_vm_stats_available{host=\"datacenter1\",job=\"homelab_xcp\",vm=~\"$${vm:regex}\"} == 1)",
+          "legendFormat": "TX {{vm}} {{device}}",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${prometheus_uid}"
+          },
+          "instant": false,
+          "range": true
+        }
+      ],
+      "description": "",
+      "fieldConfig": {
+        "defaults": {
+          "unit": "Bps",
+          "min": 0,
+          "noValue": "No current sample"
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi"
+        },
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "auto",
+        "graphMode": "none"
+      }
+    },
+    {
+      "id": 10,
+      "title": "Virtual disk throughput",
+      "type": "timeseries",
+      "gridPos": {
+        "x": 12,
+        "y": 28,
+        "w": 12,
+        "h": 8
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${prometheus_uid}"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "homelab_xcp_vm_disk_read_bytes_per_second{host=\"datacenter1\",job=\"homelab_xcp\",vm=~\"$${vm:regex}\"} and on(vm) (homelab_xcp_vm_power_state{host=\"datacenter1\",job=\"homelab_xcp\",vm=~\"$${vm:regex}\"} == 1) and on(vm) (homelab_xcp_vm_stats_available{host=\"datacenter1\",job=\"homelab_xcp\",vm=~\"$${vm:regex}\"} == 1)",
+          "legendFormat": "Read {{vm}} {{disk}}",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${prometheus_uid}"
+          },
+          "instant": false,
+          "range": true
+        },
+        {
+          "refId": "B",
+          "expr": "homelab_xcp_vm_disk_write_bytes_per_second{host=\"datacenter1\",job=\"homelab_xcp\",vm=~\"$${vm:regex}\"} and on(vm) (homelab_xcp_vm_power_state{host=\"datacenter1\",job=\"homelab_xcp\",vm=~\"$${vm:regex}\"} == 1) and on(vm) (homelab_xcp_vm_stats_available{host=\"datacenter1\",job=\"homelab_xcp\",vm=~\"$${vm:regex}\"} == 1)",
+          "legendFormat": "Write {{vm}} {{disk}}",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${prometheus_uid}"
+          },
+          "instant": false,
+          "range": true
+        }
+      ],
+      "description": "",
+      "fieldConfig": {
+        "defaults": {
+          "unit": "Bps",
+          "min": 0,
+          "noValue": "No current sample"
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi"
+        },
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "auto",
+        "graphMode": "none"
+      }
+    },
+    {
+      "id": 11,
+      "title": "Virtual disk IOPS",
+      "type": "timeseries",
+      "gridPos": {
+        "x": 0,
+        "y": 36,
+        "w": 12,
+        "h": 8
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${prometheus_uid}"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "homelab_xcp_vm_disk_read_iops{host=\"datacenter1\",job=\"homelab_xcp\",vm=~\"$${vm:regex}\"} and on(vm) (homelab_xcp_vm_power_state{host=\"datacenter1\",job=\"homelab_xcp\",vm=~\"$${vm:regex}\"} == 1) and on(vm) (homelab_xcp_vm_stats_available{host=\"datacenter1\",job=\"homelab_xcp\",vm=~\"$${vm:regex}\"} == 1)",
+          "legendFormat": "Read {{vm}} {{disk}}",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${prometheus_uid}"
+          },
+          "instant": false,
+          "range": true
+        },
+        {
+          "refId": "B",
+          "expr": "homelab_xcp_vm_disk_write_iops{host=\"datacenter1\",job=\"homelab_xcp\",vm=~\"$${vm:regex}\"} and on(vm) (homelab_xcp_vm_power_state{host=\"datacenter1\",job=\"homelab_xcp\",vm=~\"$${vm:regex}\"} == 1) and on(vm) (homelab_xcp_vm_stats_available{host=\"datacenter1\",job=\"homelab_xcp\",vm=~\"$${vm:regex}\"} == 1)",
+          "legendFormat": "Write {{vm}} {{disk}}",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${prometheus_uid}"
+          },
+          "instant": false,
+          "range": true
+        }
+      ],
+      "description": "",
+      "fieldConfig": {
+        "defaults": {
+          "unit": "iops",
+          "min": 0,
+          "noValue": "No current sample"
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi"
+        },
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "auto",
+        "graphMode": "none"
+      }
+    },
+    {
+      "id": 12,
+      "title": "Resource source age",
+      "type": "timeseries",
+      "gridPos": {
+        "x": 12,
+        "y": 36,
+        "w": 12,
+        "h": 8
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${prometheus_uid}"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "time() - homelab_xcp_vm_source_timestamp_seconds{host=\"datacenter1\",job=\"homelab_xcp\",vm=~\"$${vm:regex}\"} and on(vm) (homelab_xcp_vm_power_state{host=\"datacenter1\",job=\"homelab_xcp\",vm=~\"$${vm:regex}\"} == 1) and on(vm) (homelab_xcp_vm_stats_available{host=\"datacenter1\",job=\"homelab_xcp\",vm=~\"$${vm:regex}\"} == 1)",
+          "legendFormat": "{{vm}}",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${prometheus_uid}"
+          },
+          "instant": false,
+          "range": true
+        }
+      ],
+      "description": "",
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "min": 0,
+          "noValue": "No current sample"
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi"
+        },
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "auto",
+        "graphMode": "none"
+      }
+    },
+    {
+      "id": 13,
+      "title": "Collection scope",
+      "type": "text",
+      "gridPos": {
+        "x": 0,
+        "y": 44,
+        "w": 24,
+        "h": 4
+      },
+      "options": {
+        "mode": "markdown",
+        "content": "Resources are read centrally through the existing XOA viewer account once per minute. Parrot is excluded by alias, UUID and live identity. Halted VMs report power state only and begin reporting resources after boot. Guest RAM usage needs guest tools; filesystem free space, application health, guest load averages and Wazuh detection events require separate guest instrumentation. Inspect [host collector health](/d/homelab-xcp-host) if samples disappear. No notifications are configured."
+      }
+    }
+  ]
+}

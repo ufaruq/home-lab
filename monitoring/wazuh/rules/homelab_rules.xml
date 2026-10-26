@@ -1,0 +1,7 @@
+<group name="homelab,">
+  <rule id="100100" level="5">
+    <decoded_as>homelab-monitoring</decoded_as>
+    <description>Homelab monitoring pipeline test event.</description>
+    <group>homelab_health,</group>
+  </rule>
+</group>

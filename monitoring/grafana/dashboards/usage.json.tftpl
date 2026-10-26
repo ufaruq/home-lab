@@ -1,0 +1,190 @@
+{
+  "uid": "homelab-free-usage",
+  "title": "Home lab Free usage targets",
+  "schemaVersion": 39,
+  "version": 1,
+  "editable": false,
+  "tags": [
+    "homelab",
+    "terraform"
+  ],
+  "timezone": "browser",
+  "refresh": "1m",
+  "time": {
+    "from": "now-6h",
+    "to": "now"
+  },
+  "panels": [
+    {
+      "id": 1,
+      "title": "Tenant active metric series",
+      "type": "timeseries",
+      "gridPos": {
+        "x": 0,
+        "y": 0,
+        "w": 12,
+        "h": 8
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${usage_uid}"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum(grafanacloud_instance_active_series)",
+          "legendFormat": "{{host}}",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${usage_uid}"
+          }
+        }
+      ],
+      "description": "All series exposed by the existing usage data source, including non-homelab telemetry. Target below 7,000.",
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "min": 0,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 7000
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "calcs": [
+            "lastNotNull"
+          ]
+        }
+      }
+    },
+    {
+      "id": 2,
+      "title": "Tenant samples per minute",
+      "type": "timeseries",
+      "gridPos": {
+        "x": 12,
+        "y": 0,
+        "w": 12,
+        "h": 8
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${usage_uid}"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "60 * sum(grafanacloud_instance_samples_per_second)",
+          "legendFormat": "{{host}}",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${usage_uid}"
+          }
+        }
+      ],
+      "description": "Official usage metric; monitor DPM as well as series.",
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "min": 0
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "calcs": [
+            "lastNotNull"
+          ]
+        }
+      }
+    },
+    {
+      "id": 3,
+      "title": "Home lab log bytes observed in last day",
+      "type": "timeseries",
+      "gridPos": {
+        "x": 0,
+        "y": 8,
+        "w": 12,
+        "h": 8
+      },
+      "datasource": {
+        "type": "loki",
+        "uid": "${loki_uid}"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum(bytes_over_time({job=\"homelab\"}[24h]))",
+          "legendFormat": "{{host}}",
+          "datasource": {
+            "type": "loki",
+            "uid": "${loki_uid}"
+          }
+        }
+      ],
+      "description": "Retained matching log bytes, not exact tenant billed ingestion. Target below 500,000,000 bytes/day. Other jobs and dropped logs are excluded.",
+      "fieldConfig": {
+        "defaults": {
+          "unit": "decbytes",
+          "min": 0,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 500000000
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "calcs": [
+            "lastNotNull"
+          ]
+        }
+      }
+    },
+    {
+      "id": 4,
+      "title": "Plan verification and complete usage",
+      "type": "text",
+      "gridPos": {
+        "x": 12,
+        "y": 8,
+        "w": 12,
+        "h": 8
+      },
+      "options": {
+        "mode": "markdown",
+        "content": "Grafana states Trial use is never billed and the account automatically moves to the $0 Free plan. Review Grafana Cloud **Cost Management and Billing → Usage** for tenant-wide logs and metrics, retention, and current plan. This dashboard does not enforce ingestion limits. The log panel covers only retained `job=homelab` logs; include every other source in the overall usage review."
+      }
+    }
+  ],
+  "description": "Operational targets: 7,000 active series and 500 MB logs/day. These are monitoring targets, not hard caps. Grafana Free is always $0 and enforces service usage limits. Usage metrics require the existing grafanacloud-usage data source and appropriate read access."
+}

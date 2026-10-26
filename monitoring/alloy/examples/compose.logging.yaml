@@ -1,0 +1,34 @@
+# Merge only the entries matching services in an existing owner-managed Compose
+# project. This logging-only fragment has no images, volumes, ports or secrets.
+# Deploy the optional Alloy loopback receiver BEFORE an approved app recreation.
+# Docker resolves 127.0.0.1 from its daemon's network context, not the container.
+x-homelab-syslog-options: &homelab-syslog-options
+  syslog-address: tcp://127.0.0.1:1515
+  syslog-format: rfc5424
+  syslog-facility: daemon
+  mode: non-blocking
+  max-buffer-size: 1m
+  # Keep a small rotated local Docker logs cache; no collector reads this cache.
+  cache-max-size: 5m
+  cache-max-file: '2'
+  cache-compress: 'true'
+
+services:
+  maps:
+    logging:
+      driver: syslog
+      options:
+        <<: *homelab-syslog-options
+        tag: homelab.maps
+  open-webui:
+    logging:
+      driver: syslog
+      options:
+        <<: *homelab-syslog-options
+        tag: homelab.openwebui
+  portainer:
+    logging:
+      driver: syslog
+      options:
+        <<: *homelab-syslog-options
+        tag: homelab.portainer

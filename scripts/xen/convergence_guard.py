@@ -60,6 +60,15 @@ def desired(vm, settings):
             fail('unsupported observed auto_poweron value')
     if result.get('auto_poweron') is True and result['power_state'] != 'Running':
         fail('auto_poweron true requires desired Running state')
+    if 'allow_graceful_shutdown' in settings:
+        if type(settings['allow_graceful_shutdown']) is not bool:
+            fail('allow_graceful_shutdown must be a boolean')
+        if settings['allow_graceful_shutdown']:
+            blocked = vm.get('blocked_operations', [])
+            if not isinstance(blocked, list) or not all(isinstance(value, str) for value in blocked):
+                fail('blocked_operations baseline must be a list of operation names')
+            result['blocked_operations'] = sorted(value for value in blocked
+                                                   if value not in ('clean_shutdown', 'clean_reboot'))
     if result.get('memory_min', 0) > result.get('memory_max', float('inf')):
         fail('memory_min exceeds memory_max')
     return result
@@ -76,7 +85,7 @@ def validate_inputs(inventory, policy, bindings):
         if set(policy.get(kind, {})) - set(inventory[kind]):
             fail(f'unknown {kind} policy identity')
     for logical, settings in policy.get('vms', {}).items():
-        if not isinstance(settings, dict) or set(settings) - (VM_MUTABLE | {'auto_poweron', 'recovery'}):
+        if not isinstance(settings, dict) or set(settings) - (VM_MUTABLE | {'auto_poweron', 'recovery', 'allow_graceful_shutdown'}):
             fail('unknown VM policy setting')
         desired(inventory['vms'][logical], settings)
         if 'recovery' in settings:
@@ -151,6 +160,12 @@ def check_existing(change, after, current, is_vm, target, settings):
             fail('before identity does not match current binding')
         left, right = normalized(before), normalized(after)
         if is_vm:
+            if settings.get('allow_graceful_shutdown') is True:
+                remaining = sorted(value for value in (before.get('blocked_operations') or [])
+                                   if value not in ('clean_shutdown', 'clean_reboot'))
+                if remaining != target['blocked_operations'] or sorted(after.get('blocked_operations') or []) != remaining:
+                    fail('graceful shutdown remediation may remove only clean shutdown/reboot blocks; other protections must remain unchanged')
+                left.pop('blocked_operations', None); right.pop('blocked_operations', None)
             if 'auto_poweron' in settings and after.get('auto_poweron') is target['auto_poweron']:
                 left.pop('auto_poweron', None); right.pop('auto_poweron', None)
             for field in VM_MUTABLE:
@@ -171,7 +186,8 @@ def check_existing(change, after, current, is_vm, target, settings):
         fail('network updates are forbidden')
     if is_vm:
         for field, value in target.items():
-            if (field == 'auto_poweron' and after.get(field) is not value) or after.get(field) != value:
+            planned_field = sorted(after.get(field) or []) if field == 'blocked_operations' else after.get(field)
+            if (field == 'auto_poweron' and planned_field is not value) or planned_field != value:
                 fail(f'{field} does not match desired policy/baseline')
 
 
@@ -296,7 +312,8 @@ def verify(plan, inventory, policy, bindings):
             if recipe.get('verified') is not True or recipe.get('template_id') not in bindings['available_template_ids'] or after.get('template') != recipe.get('template_id'):
                 fail('VM recovery requires verified, available, exact template')
             for field, value in target.items():
-                if (field == 'auto_poweron' and after.get(field) is not value) or after.get(field) != value:
+                planned_field = sorted(after.get(field) or []) if field == 'blocked_operations' else after.get(field)
+                if (field == 'auto_poweron' and planned_field is not value) or planned_field != value:
                     fail(f'recovered {field} differs from desired policy/baseline')
             check_vm_shape(after, inventory['vms'][logical], inventory, bindings)
         else:
