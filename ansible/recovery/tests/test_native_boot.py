@@ -15,6 +15,7 @@ class FakeAPI:
         self.writes=[]
     def snapshot(self):return copy.deepcopy(self.data)
     def enable_pool(self,pool_uuid):self.writes.append('pool');self.data['pool_auto_poweron']='true'
+    def set_guest_lifecycle(self,identity,settings):self.writes.append(('lifecycle',identity));self.data['vms'][identity].update(settings)
 
 class FakeSystem:
     def __init__(self):
@@ -28,6 +29,53 @@ class FakeSystem:
     def start(self):self.calls.append('start');self.data['active']=True;self.data['active_state']='active'
 
 class BootTests(unittest.TestCase):
+    def lifecycle_case(self):
+        policy=copy.deepcopy(POLICY);policy['guest_lifecycle']={MANAGER:{'actions_after_crash':'restart','actions_after_reboot':'restart','actions_after_shutdown':'destroy'}}
+        api=FakeAPI();api.data['vms'][MANAGER].update(actions_after_crash='destroy',actions_after_reboot='destroy',actions_after_shutdown='destroy')
+        system=FakeSystem();system.data.update(runtime_mask=False,active=True,active_state='active')
+        return policy,api,system
+    def test_lifecycle_check_is_readonly_and_apply_changes_only_metadata(self):
+        policy,api,system=self.lifecycle_case();before=api.data['vms'][MANAGER]['power_state']
+        self.assertEqual(m.reconcile(api,system,policy,False)['operations'],['restore_guest_lifecycle']);self.assertEqual(api.writes,[])
+        self.assertTrue(m.reconcile(api,system,policy,True)['changed']);self.assertEqual(api.data['vms'][MANAGER]['power_state'],before)
+        self.assertEqual(api.data['vms'][MANAGER]['actions_after_shutdown'],'destroy');self.assertFalse(m.reconcile(api,system,policy,True)['changed'])
+    def test_lifecycle_cannot_target_unapproved_guest_or_request_dumps_or_shutdown_loop(self):
+        for kind in ('unapproved','dump','shutdown_restart'):
+            policy,api,system=self.lifecycle_case()
+            if kind=='unapproved':policy['guest_lifecycle'][HOST]=policy['guest_lifecycle'].pop(MANAGER)
+            elif kind=='dump':policy['guest_lifecycle'][MANAGER]['actions_after_crash']='coredump_and_restart'
+            else:policy['guest_lifecycle'][MANAGER]['actions_after_shutdown']='restart'
+            with self.assertRaises(ValueError):m.reconcile(api,system,policy,True)
+            self.assertEqual(api.writes,[]);self.assertEqual(system.calls,[])
+    def multiple(self):
+        policy=copy.deepcopy(POLICY)
+        extra='00000000-0000-4000-8000-000000000099'
+        policy['automatic_vm_ids']=[extra,MANAGER]
+        policy['management_vm_id']=MANAGER
+        api=FakeAPI();api.data['vms'][extra]={'name':'selected application','auto_poweron':'true','power_state':'Running'}
+        return policy,api,extra
+    def test_exact_multiple_automatic_guests_are_supported(self):
+        policy,api,extra=self.multiple();system=FakeSystem()
+        result=m.reconcile(api,system,policy,True)
+        self.assertEqual(result['after']['api']['vms'][extra]['power_state'],'Running')
+        self.assertEqual(result['after']['api']['vms']['other']['power_state'],'Halted')
+    def test_multiple_policy_requires_explicit_manager_and_unique_selection(self):
+        for kind in ('missing_manager','outside_manager','duplicate'):
+            policy,api,extra=self.multiple()
+            if kind=='missing_manager':policy.pop('management_vm_id')
+            elif kind=='outside_manager':policy['management_vm_id']=HOST
+            else:policy['automatic_vm_ids'].append(extra)
+            with self.assertRaises(ValueError):m.reconcile(api,FakeSystem(),policy,True)
+            self.assertEqual(api.writes,[])
+    def test_active_unit_refuses_any_selected_halted_guest_before_writes(self):
+        policy,api,extra=self.multiple();api.data['vms'][extra]['power_state']='Halted'
+        system=FakeSystem();system.data.update(runtime_mask=False,active=True,active_state='active')
+        with self.assertRaisesRegex(ValueError,'automatic guest is halted'):m.reconcile(api,system,policy,True)
+        self.assertEqual(system.calls,[]);self.assertEqual(api.writes,[])
+    def test_start_checks_every_selected_guest(self):
+        policy,api,extra=self.multiple();api.data['vms'][extra]['power_state']='Halted'
+        with self.assertRaisesRegex(ValueError,'every approved automatic guest'):m.reconcile(api,FakeSystem(),policy,True)
+
     def test_check_has_no_writes_apply_is_idempotent(self):
         api=FakeAPI();system=FakeSystem()
         self.assertTrue(m.reconcile(api,system,POLICY,False)['changed'])

@@ -1,0 +1,63 @@
+---
+- name: Allocate private staged endpoint configuration
+  ansible.builtin.tempfile:
+    state: file
+    path: /var/ossec/etc
+    prefix: .homelab-agent-response-
+  register: monitoring_response_stage
+
+- name: Disable endpoint response with scoped validation and rollback
+  block:
+    - name: Stage only active-response disabled setting preserving other policy
+      ansible.builtin.script:
+        cmd: '{{ role_path }}/../../../monitoring/wazuh/disable_response.py /var/ossec/etc/ossec.conf {{ monitoring_response_stage.path }}'
+        executable: python3
+      changed_when: false
+      no_log: true
+
+    - name: Install scoped response setting only after execd validation
+      ansible.builtin.copy:
+        src: '{{ monitoring_response_stage.path }}'
+        dest: /var/ossec/etc/ossec.conf
+        remote_src: true
+        owner: root
+        group: wazuh
+        mode: '0640'
+        backup: true
+        validate: '/var/ossec/bin/wazuh-execd -t -c %s'
+      register: monitoring_response_copy
+      no_log: true
+      diff: false
+
+    - name: Restart agent when disabling active response
+      ansible.builtin.service:
+        name: wazuh-agent
+        state: restarted
+      when: monitoring_response_copy.changed
+  rescue:
+    - name: Restore previous endpoint config on failed response activation
+      ansible.builtin.copy:
+        src: '{{ monitoring_response_copy.backup_file }}'
+        dest: /var/ossec/etc/ossec.conf
+        remote_src: true
+        owner: root
+        group: wazuh
+        mode: '0640'
+      when: monitoring_response_copy.backup_file is defined
+      no_log: true
+      diff: false
+
+    - name: Restart restored endpoint configuration
+      ansible.builtin.service:
+        name: wazuh-agent
+        state: restarted
+      when: monitoring_response_copy.backup_file is defined
+
+    - name: Report failed response disablement
+      ansible.builtin.fail:
+        msg: Scoped endpoint active-response disablement failed; previous config restored when changed.
+  always:
+    - name: Remove private temporary endpoint configuration
+      ansible.builtin.file:
+        path: '{{ monitoring_response_stage.path }}'
+        state: absent

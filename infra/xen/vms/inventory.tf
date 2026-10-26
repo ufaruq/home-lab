@@ -79,11 +79,15 @@ locals {
   # Overrides change desired behavior, never the historical capture or logical keys.
   fleet = {
     for id, vm in local.observed_fleet : id => merge(vm, {
-      cpus                 = try(local.desired_state.vms[id].cpus, vm.cpus)
-      memory_min           = try(local.desired_state.vms[id].memory_min, vm.memory_min)
-      memory_max           = try(local.desired_state.vms[id].memory_max, vm.memory_max)
-      power_state          = try(local.desired_state.vms[id].power_state, vm.power_state)
-      auto_poweron         = try(local.desired_state.vms[id].auto_poweron, vm.auto_poweron)
+      cpus         = try(local.desired_state.vms[id].cpus, vm.cpus)
+      memory_min   = try(local.desired_state.vms[id].memory_min, vm.memory_min)
+      memory_max   = try(local.desired_state.vms[id].memory_max, vm.memory_max)
+      power_state  = try(local.desired_state.vms[id].power_state, vm.power_state)
+      auto_poweron = try(local.desired_state.vms[id].auto_poweron, vm.auto_poweron)
+      blocked_operations = [
+        for operation in vm.blocked_operations : operation
+        if !(try(local.desired_state.vms[id].allow_graceful_shutdown, false) && contains(["clean_shutdown", "clean_reboot"], operation))
+      ]
       recovery_verified    = try(local.desired_state.vms[id].recovery.verified == true, false)
       recovery_template_id = try(local.desired_state.vms[id].recovery.template_id, null)
       template_uuid        = try(local.desired_state.vms[id].recovery.verified == true, false) ? try(local.desired_state.vms[id].recovery.template_id, vm.template_uuid) : vm.template_uuid

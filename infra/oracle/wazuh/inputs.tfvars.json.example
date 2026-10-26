@@ -1,0 +1,8 @@
+{
+  "tenancy_ocid": "REPLACE_WITH_EXISTING_TENANCY_OCID",
+  "compartment_ocid": "REPLACE_WITH_EXISTING_HOME_LAB_OCID",
+  "availability_domain": "REPLACE_WITH_VERIFIED_PREFIX:US-SANJOSE-1-AD-1",
+  "image_ocid": "REPLACE_WITH_AUDITED_OFFICIAL_UBUNTU_ARM_IMAGE",
+  "ssh_public_key": "REPLACE_WITH_PUBLIC_ED25519_KEY_ONLY",
+  "bootstrap_ssh_cidr": null
+}

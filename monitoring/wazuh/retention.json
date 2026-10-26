@@ -1,0 +1,11 @@
+{
+  "policy": {
+    "description": "Homelab Wazuh alerts: delete alert indices after seven days",
+    "default_state": "retain",
+    "states": [
+      {"name": "retain", "actions": [], "transitions": [{"state_name": "delete", "conditions": {"min_index_age": "7d"}}]},
+      {"name": "delete", "actions": [{"delete": {}}], "transitions": []}
+    ],
+    "ism_template": [{"index_patterns": ["wazuh-alerts-4.x-*"], "priority": 100}]
+  }
+}

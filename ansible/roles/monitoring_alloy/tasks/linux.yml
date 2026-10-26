@@ -1,0 +1,207 @@
+---
+- name: Gather minimal Linux facts after deployment gate
+  ansible.builtin.setup:
+    gather_subset: [min]
+
+- name: Restrict Linux package installation to Debian family on supported architectures
+  ansible.builtin.assert:
+    that:
+      - ansible_facts.os_family == 'Debian'
+      - ansible_facts.architecture in ['x86_64', 'aarch64']
+      - ansible_facts.service_mgr == 'systemd'
+    fail_msg: This role supports systemd Debian-family amd64/arm64 guests only; other guests need a reviewed installer.
+
+- name: Inspect existing package state without installing anything
+  ansible.builtin.package_facts:
+    manager: apt
+
+- name: Inspect official Linux binary location
+  ansible.builtin.stat:
+    path: /usr/bin/alloy
+  register: monitoring_alloy_binary
+
+- name: Reject automatic repair, replacement and unapproved fresh installation
+  ansible.builtin.assert:
+    that:
+      - monitoring_alloy_binary.stat.exists or ('alloy' not in ansible_facts.packages and monitoring_alloy_install_approved)
+      - "'alloy' not in ansible_facts.packages or ansible_facts.packages.alloy[0].version == monitoring_alloy_version ~ '-1'"
+    fail_msg: Existing Alloy must match the pin. Missing installations require monitoring_alloy_install_approved=true; upgrades/repairs require separate review.
+
+- name: Verify existing Linux binary version before adoption
+  ansible.builtin.command:
+    argv: [/usr/bin/alloy, --version]
+  changed_when: false
+  register: monitoring_alloy_existing_version
+  when: monitoring_alloy_binary.stat.exists
+
+- name: Refuse implicit Linux binary upgrades
+  ansible.builtin.assert:
+    that:
+      - monitoring_alloy_existing_version.stdout is search('version v?' ~ (monitoring_alloy_version | regex_escape) ~ '(\s|$|\))')
+    fail_msg: Existing Alloy version differs from the reviewed pin; this role never upgrades it.
+  when: monitoring_alloy_binary.stat.exists
+
+- name: Install official pinned Linux package only for approved fresh hosts
+  when: not monitoring_alloy_binary.stat.exists
+  become: true
+  block:
+    - name: Create protected package cache
+      ansible.builtin.file:
+        path: /var/cache/homelab-monitoring
+        state: directory
+        owner: root
+        group: root
+        mode: '0700'
+    - name: Download immutable official Debian package with verified SHA256
+      ansible.builtin.get_url:
+        url: "https://github.com/grafana/alloy/releases/download/v{{ monitoring_alloy_version }}/alloy-{{ monitoring_alloy_version }}-1.{{ 'amd64' if ansible_facts.architecture == 'x86_64' else 'arm64' }}.deb"
+        dest: /var/cache/homelab-monitoring/alloy.deb
+        checksum: "sha256:{{ monitoring_alloy_release.deb_amd64 if ansible_facts.architecture == 'x86_64' else monitoring_alloy_release.deb_arm64 }}"
+        owner: root
+        group: root
+        mode: '0600'
+        validate_certs: true
+    - name: Install exact package without starting a default collector or upgrading the OS
+      ansible.builtin.apt:
+        deb: /var/cache/homelab-monitoring/alloy.deb
+        state: present
+        install_recommends: false
+        update_cache: false
+        policy_rc_d: 101
+
+- name: Verify installed Linux binary pin
+  ansible.builtin.command:
+    argv: [/usr/bin/alloy, --version]
+  changed_when: false
+  register: monitoring_alloy_installed_version
+
+- name: Confirm official Linux binary version
+  ansible.builtin.assert:
+    that:
+      - monitoring_alloy_installed_version.stdout is search('version v?' ~ (monitoring_alloy_version | regex_escape) ~ '(\s|$|\))')
+
+- name: Create dedicated Linux collector group
+  ansible.builtin.group:
+    name: alloy
+    system: true
+  become: true
+
+- name: Run Alloy as a dedicated unprivileged account without supplementary groups
+  ansible.builtin.user:
+    name: alloy
+    group: alloy
+    system: true
+    shell: /usr/sbin/nologin
+    home: /var/lib/alloy
+    create_home: false
+    groups: ''
+    append: false
+  become: true
+  notify: Restart Linux Alloy
+
+- name: Preserve persistent component positions and metric WAL directory
+  ansible.builtin.file:
+    path: /var/lib/alloy
+    state: directory
+    owner: alloy
+    group: alloy
+    mode: '0700'
+  become: true
+
+- name: Protect Linux collector configuration directory
+  ansible.builtin.file:
+    path: /etc/alloy
+    state: directory
+    owner: root
+    group: alloy
+    mode: '0750'
+  become: true
+
+- name: Check selected logs exist
+  ansible.builtin.stat:
+    path: "{{ item }}"
+    follow: false
+  loop: "{{ monitoring_alloy_linux_log_files }}"
+  register: monitoring_alloy_selected_logs
+
+- name: Reject symlinks and nonregular selected logs
+  ansible.builtin.assert:
+    that:
+      - not item.stat.exists or (item.stat.isreg and not item.stat.islnk)
+  loop: "{{ monitoring_alloy_selected_logs.results }}"
+  loop_control:
+    label: "{{ item.item }}"
+
+- name: Verify precise log access without adding broad adm or docker privileges
+  ansible.builtin.command:
+    argv: [/usr/bin/test, -r, "{{ item.item }}"]
+  become: true
+  become_user: alloy
+  changed_when: false
+  loop: "{{ monitoring_alloy_selected_logs.results }}"
+  loop_control:
+    label: "{{ item.item }}"
+  when: item.stat.exists
+
+- name: Store Grafana write token separately from rendered configuration
+  ansible.builtin.copy:
+    content: "{{ monitoring_grafana_write_token }}"
+    dest: /etc/alloy/grafana-write-token
+    owner: root
+    group: alloy
+    mode: '0640'
+  become: true
+  no_log: true
+  diff: false
+  notify: Restart Linux Alloy
+
+- name: Validate candidate Linux configuration before atomic replacement
+  ansible.builtin.template:
+    src: config.alloy.j2
+    dest: /etc/alloy/config.alloy
+    owner: root
+    group: alloy
+    mode: '0640'
+    validate: /usr/bin/alloy validate %s
+  vars:
+    monitoring_alloy_platform: linux
+    monitoring_alloy_token_path: /etc/alloy/grafana-write-token
+    monitoring_alloy_storage_path: /var/lib/alloy
+  become: true
+  no_log: true
+  diff: false
+  notify: Restart Linux Alloy
+
+- name: Refuse unmanaged systemd drop-ins that could defeat service confinement
+  ansible.builtin.find:
+    paths: [/etc/systemd/system/alloy.service.d, /run/systemd/system/alloy.service.d, /usr/lib/systemd/system/alloy.service.d, /lib/systemd/system/alloy.service.d]
+    patterns: '*.conf'
+    file_type: any
+  register: monitoring_alloy_dropins
+  become: true
+
+- name: Require review of existing Alloy systemd overrides
+  ansible.builtin.assert:
+    that: monitoring_alloy_dropins.matched == 0
+    fail_msg: Existing Alloy service drop-ins require review before adopting the constrained service unit.
+
+- name: Install dedicated constrained Linux service unit
+  ansible.builtin.template:
+    src: alloy.service.j2
+    dest: /etc/systemd/system/alloy.service
+    owner: root
+    group: root
+    mode: '0644'
+  become: true
+  notify: Restart Linux Alloy
+
+- name: Apply validated Linux collector changes
+  ansible.builtin.meta: flush_handlers
+
+- name: Enable and start Linux collector
+  ansible.builtin.systemd_service:
+    name: alloy
+    daemon_reload: true
+    enabled: true
+    state: started
+  become: true

@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-"""Restore reviewed native XOA-only boot/shutdown wiring. Python 2.7/3; check by default."""
+"""Restore reviewed native guest boot/shutdown wiring. Python 2.7/3; check by default."""
 from __future__ import print_function
 import argparse,base64,copy,hashlib,json,os,subprocess,sys,tempfile,time
 UNIT='xapi-domains.service'
@@ -11,16 +11,28 @@ def validate_policy(policy):
     import re
     import uuid
     required=set(['expected_host_uuid','expected_pool_uuid','automatic_vm_ids','stock_sha256'])
-    if not isinstance(policy,dict) or set(policy)!=required:
+    if not isinstance(policy,dict) or not required.issubset(policy) or set(policy)-required-set(['management_vm_id','guest_lifecycle']):
         raise ValueError('Required private boot policy is incomplete or has unsupported fields')
     identities=[policy['expected_host_uuid'],policy['expected_pool_uuid']]
-    if not isinstance(policy['automatic_vm_ids'],list) or len(policy['automatic_vm_ids'])!=1:
-        raise ValueError('Private boot policy must select exactly one automatic management VM')
+    if not isinstance(policy['automatic_vm_ids'],list) or not policy['automatic_vm_ids'] or len(set(policy['automatic_vm_ids']))!=len(policy['automatic_vm_ids']):
+        raise ValueError('Private boot policy must select a nonempty unique automatic VM set')
+    manager=policy.get('management_vm_id')
+    if manager is None and len(policy['automatic_vm_ids'])!=1:
+        raise ValueError('Multiple automatic VMs require an explicit management_vm_id')
+    if manager is not None and manager not in policy['automatic_vm_ids']:
+        raise ValueError('Management VM must belong to the approved automatic VM set')
     identities+=policy['automatic_vm_ids']
     for identity in identities:
         try:
             if str(uuid.UUID(identity))!=identity:raise ValueError()
         except (ValueError,TypeError,AttributeError):raise ValueError('Boot policy requires canonical UUID identities')
+    lifecycle=policy.get('guest_lifecycle',{})
+    if not isinstance(lifecycle,dict) or set(lifecycle)-set(policy['automatic_vm_ids']):
+        raise ValueError('Guest lifecycle policy must select only approved automatic VMs')
+    supported={'actions_after_crash':'restart','actions_after_reboot':'restart','actions_after_shutdown':'destroy'}
+    for settings in lifecycle.values():
+        if not isinstance(settings,dict) or not settings or set(settings)-set(supported) or any(value!=supported[key] for key,value in settings.items()):
+            raise ValueError('Guest lifecycle policy may require restart after crash/reboot and preserve intentional shutdown')
     hashes=policy['stock_sha256']
     if not isinstance(hashes,dict) or set(hashes)!=set([STOCK,SCRIPT]) or any(not isinstance(value,type('')) and not isinstance(value,type(u'')) or not re.match(r'^[0-9a-f]{64}$',value) for value in hashes.values()):
         raise ValueError('Private boot policy must contain reviewed stock unit/script SHA256 values')
@@ -32,10 +44,10 @@ def validate_api(state,policy):
         raise ValueError('Host/pool identity differs from reviewed single-host policy')
     expected=set(policy['automatic_vm_ids'])
     actual=set(uuid for uuid,v in state['vms'].items() if v['auto_poweron']=='true')
-    if actual != expected:raise ValueError('VM auto_poweron flags do not match exact XOA-only policy; Terraform must reconcile them first')
+    if actual != expected:raise ValueError('VM auto_poweron flags do not match the exact approved policy; Terraform must reconcile them first')
     for uuid,v in state['vms'].items():
         if v['auto_poweron'] not in ('','false','true'):raise ValueError('Unexpected guest auto_poweron value')
-        if uuid in expected and v['power_state'] not in ('Running','Halted'):raise ValueError('XOA power state is not Running/Halted')
+        if uuid in expected and v['power_state'] not in ('Running','Halted'):raise ValueError('Automatic guest power state is not Running/Halted')
         if uuid not in expected and v['power_state'] not in ('Halted','Running','Paused','Suspended'):raise ValueError('Unrecognized nonautomatic guest power state: '+uuid)
 
 
@@ -46,20 +58,26 @@ def reconcile(api,system,policy,apply=False):
     if unit['persistent_override'] or unit['unexpected_dropins'] or not unit['stock_hashes_valid']:
         raise ValueError('Persistent mask/override, drop-in or modified stock boot/shutdown unit/script requires review')
     if unit['active_state'] not in ('active','inactive'):raise ValueError('Unexpected/transitional stock unit state; refusing lifecycle changes')
-    if unit['active'] and before['api']['vms'][policy['automatic_vm_ids'][0]]['power_state']=='Halted':
-        raise ValueError('Stock unit is active while XOA is halted; no restart or direct VM start is allowed by this helper')
+    if unit['active'] and any(before['api']['vms'][identity]['power_state']=='Halted' for identity in policy['automatic_vm_ids']):
+        raise ValueError('Stock unit is active while an automatic guest is halted; Terraform must restore the declared power state first')
     operations=[]
     if before['api']['pool_auto_poweron']!='true':operations.append('enable_pool_auto_poweron')
     if unit['runtime_mask']:operations.extend(['unmask_runtime','daemon_reload'])
     if not unit['enabled']:operations.append('enable_stock_unit')
+    if any(before['api']['vms'][identity].get(field)!=value for identity,settings in policy.get('guest_lifecycle',{}).items() for field,value in settings.items()):
+        operations.append('restore_guest_lifecycle')
     if not unit['active']:operations.append('start_stock_unit')
     result={'mode':'apply' if apply else 'check','changed':bool(operations),'operations':operations,'before':before,
-            'scope':'Native XOA-only autostart and stock graceful shutdown wiring; no custom agent, VM flag edits, direct VM lifecycle calls, stop/restart or reboot'}
+            'scope':'Native exact-policy guest autostart, lifecycle metadata and stock graceful shutdown wiring; no custom agent, auto_poweron flag edits, direct VM power calls, stop/restart or reboot'}
     if apply and operations:
         result['private_backup']=system.backup(before)
         if 'enable_pool_auto_poweron' in operations:api.enable_pool(policy['expected_pool_uuid'])
         if unit['runtime_mask']:system.unmask_runtime();system.reload()
         if not unit['enabled']:system.enable()
+        if 'restore_guest_lifecycle' in operations:
+            for identity,settings in policy.get('guest_lifecycle',{}).items():
+                changed={field:value for field,value in settings.items() if before['api']['vms'][identity].get(field)!=value}
+                if changed:api.set_guest_lifecycle(identity,changed)
         if not unit['active']:system.start()
     if apply:
         after={'api':api.snapshot(),'system':system.snapshot()}
@@ -70,8 +88,10 @@ def reconcile(api,system,policy,apply=False):
                 raise ValueError('A nonautomatic guest power state changed during native boot wiring: '+uuid)
         if after['api']['pool_auto_poweron']!='true' or after['system']['runtime_mask'] or not after['system']['enabled'] or not after['system']['active'] or after['system']['persistent_override'] or after['system']['unexpected_dropins'] or not after['system']['stock_hashes_valid']:
             raise ValueError('Native boot wiring did not reach enabled/unmasked/active state; preserve backup and inspect without stop/restart')
-        if 'start_stock_unit' in operations and after['api']['vms'][policy['automatic_vm_ids'][0]]['power_state']!='Running':
-            raise ValueError('Stock best-effort autostart did not leave XOA Running')
+        if 'start_stock_unit' in operations and any(after['api']['vms'][identity]['power_state']!='Running' for identity in policy['automatic_vm_ids']):
+            raise ValueError('Stock best-effort autostart did not leave every approved automatic guest Running')
+        if any(after['api']['vms'][identity].get(field)!=value for identity,settings in policy.get('guest_lifecycle',{}).items() for field,value in settings.items()):
+            raise ValueError('Declared guest crash/reboot metadata did not converge')
         result['after']=after
     return result
 
@@ -86,11 +106,18 @@ class NativeAPI(object):
         for v in self.x.VM.get_all_records().values():
             if v['is_a_template'] or v['is_a_snapshot'] or v['is_control_domain']:continue
             vms[v['uuid']]={'name':v['name_label'],'power_state':v['power_state'],'auto_poweron':v['other_config'].get('auto_poweron','')}
+            for field in ('actions_after_crash','actions_after_reboot','actions_after_shutdown'):vms[v['uuid']][field]=v[field]
         return {'host_uuids':hosts,'pool_uuid':pool['uuid'],'pool_auto_poweron':pool['other_config'].get('auto_poweron',''),'vms':vms}
     def enable_pool(self,pool_uuid):
         ref=self.x.pool.get_by_uuid(pool_uuid)
         config=self.x.pool.get_other_config(ref);config['auto_poweron']='true'
         self.x.pool.set_other_config(ref,config)
+    def set_guest_lifecycle(self,identity,settings):
+        ref=self.x.VM.get_by_uuid(identity)
+        if self.x.VM.get_is_control_domain(ref) or self.x.VM.get_is_a_template(ref) or self.x.VM.get_is_a_snapshot(ref):
+            raise ValueError('Guest lifecycle identity is not an ordinary guest')
+        setters={'actions_after_crash':self.x.VM.set_actions_after_crash,'actions_after_reboot':self.x.VM.set_actions_after_reboot,'actions_after_shutdown':self.x.VM.set_actions_after_shutdown}
+        for field,value in sorted(settings.items()):setters[field](ref,value)
 
 
 class NativeSystem(object):

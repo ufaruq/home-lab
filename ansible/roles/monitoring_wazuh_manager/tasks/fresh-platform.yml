@@ -1,0 +1,14 @@
+---
+- name: Refuse implicit fresh installation or unsupported OS
+  ansible.builtin.assert:
+    that:
+      - monitoring_wazuh_fresh_approved is sameas true
+      - monitoring_wazuh_manager_version == monitoring_wazuh_fresh_version
+      - monitoring_wazuh_fresh_version == '4.14.9'
+      - monitoring_wazuh_installer_sha256 is match('^[a-f0-9]{64}$')
+      - ansible_facts.distribution == 'Ubuntu'
+      - ansible_facts.distribution_version in ['22.04', '24.04']
+      - ansible_facts.architecture in ['x86_64', 'aarch64']
+      - ansible_facts.memtotal_mb >= 7500
+      - ansible_facts.processor_vcpus >= 4 or (ansible_facts.architecture == 'aarch64' and monitoring_wazuh_arm_small_approved is sameas true and ansible_facts.processor_vcpus >= 2)
+    fail_msg: Fresh install needs reviewed official checksum, pinned 4.14.9, compatible Ubuntu and capacity; a two-core ARM deployment needs explicit small-lab approval and performance validation.

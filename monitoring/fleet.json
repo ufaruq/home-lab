@@ -1,0 +1,179 @@
+{
+  "schema_version": 1,
+  "grafana": {
+    "url": "https://cordialbike2680.grafana.net",
+    "required_plan": "free",
+    "observed_plan": "trial",
+    "live_apply_enabled": false,
+    "trial_dashboard_apply_enabled": true,
+    "trial_collector_apply_enabled": true
+  },
+  "budgets": {
+    "active_series": 7000,
+    "daily_log_mb": 500,
+    "scrape_interval_seconds": 60,
+    "wazuh_alert_retention_days": 7
+  },
+  "hosts": {
+    "datacenter1": {
+      "platform": "xcp-ng",
+      "role": "hypervisor",
+      "environment": "homelab",
+      "components": [
+        "xapi",
+        "syslog"
+      ],
+      "status": "agentless",
+      "note": "Agentless XOA/XAPI host statistics are managed through infra/xcp-monitoring; see monitoring/xcp/README.md. Never install third-party agents in dom0."
+    },
+    "debian_server": {
+      "platform": "linux",
+      "role": "server",
+      "environment": "homelab",
+      "components": [
+        "alloy",
+        "wazuh-agent"
+      ],
+      "status": "planned"
+    },
+    "maps": {
+      "platform": "linux",
+      "role": "maps",
+      "environment": "homelab",
+      "components": [
+        "alloy",
+        "wazuh-agent"
+      ],
+      "status": "planned"
+    },
+    "parrot_htb": {
+      "platform": "linux",
+      "role": "pentest",
+      "environment": "lab",
+      "components": [
+        "wazuh-agent"
+      ],
+      "status": "planned",
+      "note": "Metrics explicitly excluded by owner; no Alloy or XOA VM resource collection."
+    },
+    "popos": {
+      "platform": "linux",
+      "role": "workstation",
+      "environment": "homelab",
+      "components": [
+        "alloy",
+        "wazuh-agent"
+      ],
+      "status": "planned"
+    },
+    "portainer": {
+      "platform": "linux",
+      "role": "containers",
+      "environment": "homelab",
+      "components": [
+        "alloy",
+        "wazuh-agent"
+      ],
+      "status": "planned"
+    },
+    "ubuntu_malware_lab": {
+      "platform": "linux",
+      "role": "malware-lab",
+      "environment": "lab",
+      "components": [
+        "alloy",
+        "wazuh-agent"
+      ],
+      "status": "planned"
+    },
+    "wazuh": {
+      "platform": "linux",
+      "role": "security",
+      "environment": "homelab",
+      "components": [
+        "alloy"
+      ],
+      "status": "planned",
+      "note": "Captured local manager retained for recovery; central deployment targets oracle_wazuh."
+    },
+    "xoa": {
+      "platform": "linux",
+      "role": "management",
+      "environment": "homelab",
+      "components": [
+        "alloy",
+        "wazuh-agent"
+      ],
+      "status": "planned"
+    },
+    "windows_10": {
+      "platform": "windows",
+      "role": "workstation",
+      "environment": "homelab",
+      "components": [
+        "alloy",
+        "wazuh-agent"
+      ],
+      "status": "planned"
+    },
+    "windows_11": {
+      "platform": "windows",
+      "role": "workstation",
+      "environment": "homelab",
+      "components": [
+        "alloy",
+        "wazuh-agent"
+      ],
+      "status": "planned",
+      "note": "OS/access must be verified; offline capture did not identify a readable OS filesystem."
+    },
+    "firewall": {
+      "platform": "opnsense",
+      "role": "firewall",
+      "environment": "homelab",
+      "components": [
+        "opnsense-syslog"
+      ],
+      "status": "planned",
+      "note": "User intends OPNsense; verify installed version and HTTPS API before deployment."
+    },
+    "truenas": {
+      "platform": "appliance",
+      "role": "storage",
+      "environment": "homelab",
+      "components": [
+        "snmp",
+        "syslog"
+      ],
+      "status": "agentless",
+      "note": "Edition/version and native logging/SNMP capabilities remain unverified. Do not install Linux agents."
+    },
+    "deb_node_db": {
+      "platform": "unknown",
+      "role": "database",
+      "environment": "homelab",
+      "components": [],
+      "status": "blocked",
+      "note": "No attached OS disk in captured inventory."
+    },
+    "deb_node_slim": {
+      "platform": "unknown",
+      "role": "server",
+      "environment": "homelab",
+      "components": [],
+      "status": "blocked",
+      "note": "No attached OS disk in captured inventory."
+    },
+    "oracle_wazuh": {
+      "platform": "linux",
+      "role": "security",
+      "environment": "homelab",
+      "components": [
+        "alloy",
+        "wazuh-manager"
+      ],
+      "status": "planned",
+      "note": "Selected Oracle Always Free ARM manager; provisioning blocked until free host capacity is available. Actual address and VPN/SSH identity remain unverified."
+    }
+  }
+}

@@ -1,0 +1,29 @@
+---
+monitoring_access_verified: false
+monitoring_deployment_approved: false
+monitoring_grafana_zero_cost_mode_verified: false
+monitoring_alloy_install_approved: false
+monitoring_environment: homelab
+# The caller supplies monitoring_role from the reviewed fleet manifest.
+monitoring_alloy_version: '1.21.2'
+monitoring_alloy_sample_limit: 450
+monitoring_alloy_log_rate: 0.2
+monitoring_alloy_log_burst: 10
+# Opt-in host-local Docker native syslog driver input. Never opens a LAN port.
+monitoring_alloy_container_syslog_enabled: false
+monitoring_alloy_container_syslog_apps:
+  - maps
+  - openwebui
+  - portainer
+# Only these literal paths may be selected; no globs, archives or auth logs.
+monitoring_alloy_linux_log_files:
+  - /var/log/dpkg.log
+monitoring_alloy_windows_event_channels:
+  - System
+  - Application
+# Fixed release artifacts. A version change requires reviewing these digests too.
+monitoring_alloy_release:
+  version: '1.21.2'
+  deb_amd64: 80750b6740147ee6d9d860988989dd28bdb048ab0b27b7c02da7876ea5015dad
+  deb_arm64: cb6c1e655c09b48ec516628c2d85ee4aae5df5a46d10052bd9e75c2e3631c6fa
+  windows_installer: 2fea06c9e597acab6f79470b1fb247165d13d6faf17b645c967526619974bdc6

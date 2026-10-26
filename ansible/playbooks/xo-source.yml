@@ -1,0 +1,242 @@
+---
+- name: Maintain free Xen Orchestra source builds and Debian security updates
+  hosts: xoa_remote_access
+  gather_facts: false
+  any_errors_fatal: true
+  vars:
+    xo_source_stage: prepare
+  tasks:
+    - name: Require the explicitly identified management guest and existing root access
+      ansible.builtin.assert:
+        that:
+          - ansible_play_hosts_all | length == 1
+          - xoa_expected_vm_uuid is match('^[0-9a-f-]{36}$')
+          - xo_source_stage in ['prepare', 'build', 'deploy', 'verify']
+    - name: Verify guest identity and maintenance UID
+      ansible.builtin.command: "{{ item }}"
+      loop: [cat /sys/hypervisor/uuid, id -u, cat /etc/os-release]
+      register: xo_identity
+      changed_when: false
+    - name: Refuse another guest, unprivileged access or an unreviewed OS release
+      ansible.builtin.assert:
+        that:
+          - xo_identity.results[0].stdout | trim | lower == xoa_expected_vm_uuid | lower
+          - xo_identity.results[1].stdout | trim == '0'
+          - "'VERSION_CODENAME=bookworm' in xo_identity.results[2].stdout"
+    - name: Prepare the OS and owned source-update policy
+      when: xo_source_stage == 'prepare'
+      block:
+        - name: Apply available Debian maintenance and security updates without removals
+          ansible.builtin.apt:
+            update_cache: true
+            upgrade: safe
+            force_apt_get: true
+            fail_on_autoremove: true
+            dpkg_options: force-confdef,force-confold
+          environment:
+            DEBIAN_FRONTEND: noninteractive
+            NEEDRESTART_MODE: a
+        - name: Install source-build and supported maintenance dependencies
+          ansible.builtin.apt:
+            name:
+              - build-essential
+              - redis-server
+              - libpng-dev
+              - git
+              - python3-minimal
+              - libvhdi-utils
+              - lvm2
+              - cifs-utils
+              - nfs-common
+              - ntfs-3g
+              - openssl
+              - libfuse2
+              - ca-certificates
+              - curl
+              - xz-utils
+              - pkg-config
+              - unattended-upgrades
+            state: present
+            force_apt_get: true
+            fail_on_autoremove: true
+        - name: Create an unprivileged build account
+          ansible.builtin.user:
+            name: xo-build
+            system: true
+            home: /var/lib/home-lab-xo-build
+            create_home: true
+            shell: /usr/sbin/nologin
+        - name: Declare root-owned code and private backup directories
+          ansible.builtin.file:
+            path: "{{ item.path }}"
+            state: directory
+            owner: root
+            group: root
+            mode: "{{ item.mode }}"
+          loop:
+            - {path: /opt/home-lab/xo/releases, mode: '0755'}
+            - {path: /var/lib/home-lab-xo/backups, mode: '0700'}
+            - {path: /etc/home-lab, mode: '0700'}
+            - {path: /usr/local/libexec, mode: '0755'}
+            - {path: /etc/systemd/system/xo-server.service.d, mode: '0755'}
+            - {path: /etc/systemd/journald.conf.d, mode: '0755'}
+        - name: Inspect the existing Redis persistence paths
+          ansible.builtin.command:
+            argv: [redis-cli, --raw, CONFIG, GET, "{{ item }}"]
+          loop: [dir, dbfilename, appendonly]
+          register: xo_redis_paths
+          changed_when: false
+        - name: Refuse unsupported Redis backup semantics
+          ansible.builtin.assert:
+            that:
+              - xo_redis_paths.results[0].stdout_lines[-1] == '/var/lib/redis'
+              - xo_redis_paths.results[1].stdout_lines[-1] == 'dump.rdb'
+              - xo_redis_paths.results[2].stdout_lines[-1] == 'no'
+              - xo_source_health_login.email is defined
+              - xo_source_health_login.password is defined
+          no_log: true
+        - name: Install guarded source updater
+          ansible.builtin.copy:
+            src: ../files/xo-source-update.py
+            dest: /usr/local/libexec/home-lab-xo-source-update
+            owner: root
+            group: root
+            mode: '0755'
+        - name: Install private update identity and authenticated health policy
+          ansible.builtin.copy:
+            dest: /etc/home-lab/xo-source.json
+            owner: root
+            group: root
+            mode: '0600'
+            content: "{{ {'guest_uuid': xoa_expected_vm_uuid, 'repository': 'https://github.com/vatesfr/xen-orchestra.git', 'branch': 'master', 'node_major': 24, 'health_login': xo_source_health_login, 'redis_directory': '/var/lib/redis', 'redis_filename': 'dump.rdb'} | to_nice_json }}\n"
+          no_log: true
+          diff: false
+        - name: Permit only the fixed root-owned maintenance entrypoint
+          ansible.builtin.copy:
+            dest: /etc/sudoers.d/home-lab-xo-source-update
+            content: "{{ xoa_access_user }} ALL=(root) NOPASSWD: NOSETENV: /usr/bin/python3 /usr/local/libexec/home-lab-xo-source-update --apply, /usr/bin/python3 /usr/local/libexec/home-lab-xo-source-update --status\n"
+            owner: root
+            group: root
+            mode: '0440'
+            validate: /usr/sbin/visudo -cf %s
+        - name: Declare unattended Debian security updates without unattended reboots
+          ansible.builtin.copy:
+            dest: /etc/apt/apt.conf.d/52home-lab-security
+            content: |
+              APT::Periodic::Update-Package-Lists "1";
+              APT::Periodic::Unattended-Upgrade "1";
+              APT::Periodic::AutocleanInterval "7";
+              Unattended-Upgrade::Origins-Pattern {
+                "origin=Debian,codename=bookworm-security,label=Debian-Security";
+              };
+              Unattended-Upgrade::Automatic-Reboot "false";
+              Unattended-Upgrade::Remove-Unused-Dependencies "false";
+              Unattended-Upgrade::Remove-Unused-Kernel-Packages "false";
+            owner: root
+            group: root
+            mode: '0644'
+        - name: Bound local service journal storage
+          ansible.builtin.copy:
+            dest: /etc/systemd/journald.conf.d/52home-lab-limits.conf
+            content: |
+              [Journal]
+              SystemMaxUse=128M
+              RuntimeMaxUse=64M
+              MaxRetentionSec=14day
+            owner: root
+            group: root
+            mode: '0644'
+          notify: Reload journal limits
+        - name: Declare management-service startup ordering and crash recovery
+          ansible.builtin.copy:
+            dest: /etc/systemd/system/xo-server.service.d/95-home-lab-recovery.conf
+            content: |
+              [Unit]
+              Wants=network-online.target redis-server.service
+              After=network-online.target redis-server.service
+              StartLimitIntervalSec=0
+              [Service]
+              Restart=on-failure
+              RestartSec=15s
+            owner: root
+            group: root
+            mode: '0644'
+          notify: Reload service declarations
+        - name: Declare the weekly GitHub source maintenance service
+          ansible.builtin.copy:
+            dest: /etc/systemd/system/home-lab-xo-update.service
+            content: |
+              [Unit]
+              Description=Build and health-check free XO source updates
+              Wants=network-online.target
+              After=network-online.target redis-server.service xo-server.service
+              [Service]
+              Type=oneshot
+              ExecStart=/usr/bin/python3 /usr/local/libexec/home-lab-xo-source-update --apply
+              TimeoutStartSec=45min
+              KillMode=control-group
+              Nice=10
+              IOSchedulingClass=best-effort
+              IOSchedulingPriority=7
+            owner: root
+            group: root
+            mode: '0644'
+        - name: Declare the update window
+          ansible.builtin.copy:
+            dest: /etc/systemd/system/home-lab-xo-update.timer
+            content: |
+              [Unit]
+              Description=Weekly XO source and Node LTS maintenance
+              [Timer]
+              OnCalendar=Sun *-*-* 03:00:00 America/Los_Angeles
+              RandomizedDelaySec=30min
+              Persistent=false
+              [Install]
+              WantedBy=timers.target
+            owner: root
+            group: root
+            mode: '0644'
+        - name: Enable the OS security-update timers
+          ansible.builtin.systemd:
+            name: "{{ item }}"
+            enabled: true
+            state: started
+          loop: [apt-daily.timer, apt-daily-upgrade.timer]
+    - name: Build and activate the reviewed source update
+      ansible.builtin.command: "/usr/bin/python3 /usr/local/libexec/home-lab-xo-source-update {{ '--build-only' if xo_source_stage == 'build' else '--apply' }}{{ ' --initial-migration' if xo_source_stage == 'deploy' and xo_source_initial_migration | default(false) | bool else '' }}"
+      async: 3600
+      poll: 15
+      when: xo_source_stage in ['build', 'deploy']
+    - name: Enable source updates after initial source deployment has passed health checks
+      ansible.builtin.systemd:
+        name: home-lab-xo-update.timer
+        enabled: true
+        state: started
+        daemon_reload: true
+      when: xo_source_stage == 'deploy'
+    - name: Disable the vendor updater after a healthy source deployment
+      ansible.builtin.systemd:
+        name: xoa-updater.service
+        enabled: false
+        state: stopped
+      when: xo_source_stage == 'deploy'
+    - name: Inspect the deployed source/runtime status
+      ansible.builtin.command: cat /var/lib/home-lab-xo/status.json
+      register: xo_deployed
+      changed_when: false
+      when: xo_source_stage == 'verify'
+    - name: Verify source update and authenticated inventory health
+      ansible.builtin.assert:
+        that:
+          - (xo_deployed.stdout | from_json).authenticated_inventory_health
+          - (xo_deployed.stdout | from_json).commit is match('^[0-9a-f]{40}$')
+          - (xo_deployed.stdout | from_json).node is match('^v24\.')
+      when: xo_source_stage == 'verify'
+  handlers:
+    - name: Reload service declarations
+      ansible.builtin.systemd:
+        daemon_reload: true
+    - name: Reload journal limits
+      ansible.builtin.systemd:
+        name: systemd-journald
+        state: restarted

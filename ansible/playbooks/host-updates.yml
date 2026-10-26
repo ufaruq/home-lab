@@ -1,0 +1,81 @@
+---
+- name: Stage or apply official XCP-ng maintenance packages in an explicit window
+  hosts: xcp_control
+  gather_facts: false
+  vars:
+    host_update_apply: false
+    host_update_download_only: true
+  tasks:
+    - name: Require an explicit reviewed host release and update phase
+      ansible.builtin.assert:
+        that:
+          - host_update_apply is boolean
+          - host_update_download_only is boolean
+          - host_update_expected_version is defined
+          - host_update_expected_version is match('^8\.(2|3)\.[0-9]+$')
+          - xcp_host_uuid is match('^[0-9a-f-]{36}$')
+          - host_update_download_directory is defined
+          - host_update_download_directory is match('^/run/sr-mount/[0-9a-f-]{36}/\.home-lab-upgrade/[A-Za-z0-9_-]+$')
+    - name: Verify root, installed host identity, release, free space and download capability
+      ansible.builtin.raw: "/usr/bin/python -c {{ guard | quote }}"
+      vars:
+        guard: |
+          import os,json,subprocess,base64
+          expected=json.loads(base64.b64decode('{{ {'uuid': xcp_host_uuid, 'version': host_update_expected_version, 'download_directory': host_update_download_directory, 'install': host_update_apply and not host_update_download_only and not ansible_check_mode} | to_json | b64encode }}'))
+          values={}
+          for line in open('/etc/xensource-inventory'):
+              if '=' in line:
+                  k,v=line.strip().split('=',1);values[k]=v.strip("'\"")
+          if os.geteuid()!=0 or values.get('INSTALLATION_UUID')!=expected['uuid'] or values.get('PRODUCT_VERSION')!=expected['version']:raise ValueError('Host update identity/release/privilege mismatch')
+          fs=os.statvfs('/')
+          if fs.f_flag & 1:raise ValueError('Root filesystem is read-only')
+          if fs.f_bavail*fs.f_frsize<2*1024**3:raise ValueError('Insufficient root filesystem reserve')
+          source_mount='/'.join(expected['download_directory'].split('/')[:4])
+          if not os.path.ismount(source_mount):raise ValueError('Reviewed download storage is not mounted')
+          if '--downloadonly' not in subprocess.check_output(['/usr/bin/yum','--help']):raise ValueError('Native yum download-only capability is missing')
+          if expected['install']:
+              import XenAPI
+              session=XenAPI.xapi_local();session.xenapi.login_with_password('','')
+              try:
+                  x=session.xenapi;host=x.host.get_by_uuid(expected['uuid'])
+                  if x.host.get_enabled(host):raise ValueError('Host must be disabled for the update window')
+                  pools=x.pool.get_all_records()
+                  if len(pools)!=1 or any(v['ha_enabled'] for v in pools.values()):raise ValueError('Expected one pool with HA disabled')
+                  if any(v['status']=='pending' for v in x.task.get_all_records().values()):raise ValueError('Pending XAPI tasks block package installation')
+                  if any(v['power_state']!='Halted' for v in x.VM.get_all_records().values() if not(v['is_control_domain'] or v['is_a_template'] or v['is_a_snapshot'])):raise ValueError('All guests must be halted in this maintenance window')
+              finally:session.xenapi.session.logout()
+          print('Host release, identity, reserve and native updater verified')
+      changed_when: false
+      check_mode: false
+    - name: Review the official repository transaction without installing packages
+      ansible.builtin.raw: /usr/bin/yum --disablerepo='*' --enablerepo=xcp-ng-base --enablerepo=xcp-ng-updates --setopt=gpgcheck=1 --assumeno update
+      when: not host_update_apply or ansible_check_mode
+      register: host_update_review
+      failed_when: host_update_review.rc not in [0, 1]
+      changed_when: false
+      check_mode: false
+    - name: Start the explicit update job independently of the SSH connection
+      ansible.builtin.raw: >-
+        /usr/bin/systemd-run --quiet --unit={{ update_unit | quote }}
+        {{ '/usr/bin/timeout -k 60 1800' if host_update_download_only else '' }}
+        /usr/bin/python -c {{ update_runner | quote }}
+      vars:
+        update_unit: "home-lab-host-update-{{ host_update_expected_version | replace('.', '-') }}-{{ 'download' if host_update_download_only else 'apply' }}"
+        update_runner: "import base64; exec(compile(base64.b64decode('{{ update_payload | b64encode }}'), '<official-host-update>', 'exec'))"
+        update_payload: |
+          import base64,json,os,subprocess,sys
+          os.umask(0o077)
+          policy=json.loads(base64.b64decode('{{ {'unit': update_unit, 'directory': host_update_download_directory, 'download_only': host_update_download_only} | to_json | b64encode }}'))
+          status='/var/log/'+policy['unit']+'.status'
+          if os.path.exists(status):raise ValueError('Existing completion marker requires review before retry')
+          if not os.path.isdir(policy['directory']):os.makedirs(policy['directory'],0o700)
+          args=['/usr/bin/yum','-y','--disablerepo=*','--enablerepo=xcp-ng-base','--enablerepo=xcp-ng-updates','--setopt=gpgcheck=1']
+          if policy['download_only']:args+=['--downloadonly','--downloaddir='+policy['directory']]
+          args+=['update']
+          with open('/var/log/'+policy['unit']+'.log','wb') as log:
+              result=subprocess.call(args,stdout=log,stderr=subprocess.STDOUT)
+          with open(status,'w') as stream:
+              json.dump({'returncode':result,'download_only':policy['download_only']},stream);stream.flush();os.fsync(stream.fileno())
+          sys.exit(result)
+      when: host_update_apply and not ansible_check_mode
+      changed_when: true

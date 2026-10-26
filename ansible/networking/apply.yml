@@ -1,4 +1,6 @@
 ---
+- import_playbook: recovery-service.yml
+
 - name: Reconcile reviewed XenAPI uplink and direct-recovery network profile
   hosts: xcp_control
   gather_facts: false

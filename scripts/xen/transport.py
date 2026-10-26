@@ -148,13 +148,20 @@ def open_transport(api=True):
     if not re.fullmatch(r'[A-Za-z0-9_][A-Za-z0-9_.-]*', alias):
         raise ValueError('XEN_SSH_HOST_ALIAS is required and must be a safe host-key alias')
     pin_file = private_known_hosts()
+    bind_interface = os.environ.get('XEN_SSH_BIND_INTERFACE', '')
+    if bind_interface and not re.fullmatch(r'[A-Za-z][A-Za-z0-9_.-]{0,31}', bind_interface):
+        raise ValueError('XEN_SSH_BIND_INTERFACE must name one safe local network interface')
     endpoint, loopback = loopback_endpoint(os.environ.get('XOA_URL')) if api else (None, False)
     target = forward_target() if loopback else None
     binary = os.environ.get('XEN_SSH_BIN', 'ssh')
     control = os.environ.get('XEN_SSH_CONTROL')
+    binding_identity = host + ('\0' + bind_interface if bind_interface else '')
+    if bind_interface:
+        # An old live master may use another interface; never silently reuse it.
+        control = str(private_directory() / ('ssh-' + hashlib.sha256(binding_identity.encode()).hexdigest()[:12]))
     if not control or not master_alive(binary, host, control):
         directory = private_directory()
-        control = str(directory / ('ssh-' + hashlib.sha256(host.encode()).hexdigest()[:12]))
+        control = str(directory / ('ssh-' + hashlib.sha256(binding_identity.encode()).hexdigest()[:12]))
         if len(os.fsencode(control)) > 100:
             raise ValueError('SSH transport directory path is too long for a control socket')
         if not master_alive(binary, host, control):
@@ -169,6 +176,8 @@ def open_transport(api=True):
                          '-o', 'GlobalKnownHostsFile=/dev/null', '-o', 'UpdateHostKeys=no',
                          '-o', 'NumberOfPasswordPrompts=1', '-o', 'BatchMode=no',
                          '-o', 'ServerAliveInterval=10', '-o', 'ServerAliveCountMax=2', host]
+            if bind_interface:
+                arguments[-1:-1] = ['-B', bind_interface]
             result = run_ssh(binary, arguments, environment=environment, timeout=180)
             if result.returncode or not master_alive(binary, host, control):
                 raise RuntimeError('XCP-ng SSH authentication failed; no usable cached master was established')

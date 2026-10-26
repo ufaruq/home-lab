@@ -61,9 +61,13 @@ def control_host_vars():
 
 def bootstrap_management(inventory, policy, state):
     profile = control_host_vars().get('native_recovery_policy')
-    if not isinstance(profile, dict) or len(profile.get('automatic_vm_ids', [])) != 1:
-        raise ValueError('Required private native_recovery_policy must identify one management VM')
-    logical = profile['automatic_vm_ids'][0]
+    if not isinstance(profile, dict) or not isinstance(profile.get('automatic_vm_ids'), list) or not profile['automatic_vm_ids']:
+        raise ValueError('Required private native_recovery_policy must declare automatic VM identities')
+    logical = profile.get('management_vm_id')
+    if logical is None and len(profile['automatic_vm_ids']) == 1:
+        logical = profile['automatic_vm_ids'][0]
+    if not isinstance(logical, str) or logical not in profile['automatic_vm_ids']:
+        raise ValueError('Required private native_recovery_policy must identify one management_vm_id within the automatic VM set')
     if logical not in inventory['vms']:
         raise ValueError('Private management VM identity is absent from the captured inventory')
     expected_name = inventory['vms'][logical].get('name_label')
@@ -158,7 +162,7 @@ def validate_policy(policy, inventory):
         if not isinstance(policy.get(section, {}), dict) or set(policy.get(section, {})) - set(inventory[section]):
             raise ValueError("unknown resource in desired-state " + section)
     for logical, values in policy.get("vms", {}).items():
-        if not isinstance(values, dict) or set(values) - {"cpus", "memory_min", "memory_max", "power_state", "recovery", "auto_poweron"}:
+        if not isinstance(values, dict) or set(values) - {"cpus", "memory_min", "memory_max", "power_state", "recovery", "auto_poweron", "allow_graceful_shutdown"}:
             raise ValueError("unsupported VM desired settings for " + logical)
         for key in ("cpus", "memory_min", "memory_max"):
             if key in values and (type(values[key]) is not int or values[key] <= 0):
@@ -167,6 +171,8 @@ def validate_policy(policy, inventory):
             raise ValueError("power_state must be Running or Halted")
         if "auto_poweron" in values and type(values['auto_poweron']) is not bool:
             raise ValueError('auto_poweron must be boolean')
+        if "allow_graceful_shutdown" in values and type(values['allow_graceful_shutdown']) is not bool:
+            raise ValueError('allow_graceful_shutdown must be boolean')
     graph = inventory_graph()
     linux = graph["all"]["children"]["linux_guests"]["hosts"]
     targets = policy.get("guest_targets", [])
@@ -199,6 +205,7 @@ def load_connection():
     allowed = {'XOA_URL', 'XOA_TOKEN', 'XOA_USER', 'XOA_PASSWORD', 'XEN_HOST',
                'XEN_SSH_CONTROL', 'XEN_PRIVATE_VARS', 'XEN_PRIVATE_INVENTORY', 'ANSIBLE_PLAYBOOK_BIN',
                'XEN_SSH_HOST_ALIAS', 'XEN_KNOWN_HOSTS_FILE', 'XEN_FORWARD_TARGET',
+               'XEN_SSH_BIND_INTERFACE',
                'XEN_ANSIBLE_INVENTORY', 'XEN_HOST_VARS_FILE', 'XEN_INVENTORY_FILE', 'XEN_POLICY_FILE'}
     metadata = {'created_at', 'expires_at'}
     if not isinstance(connection, dict) or set(connection) - allowed - metadata:
@@ -336,7 +343,8 @@ def ansible(playbook, check=True, limit=None, extra_vars=None):
     if extra_vars:
         command.extend(["-e", json.dumps(extra_vars)])
     host_playbooks = {'xcp-definitions.yml', '../recovery/native-boot.yml',
-                      '../hardening/apply.yml', '../hardening/health.yml', '../networking/apply.yml'}
+                      '../hardening/apply.yml', '../hardening/health.yml', '../networking/apply.yml',
+                      '../networking/recovery-service.yml', 'host-updates.yml'}
     if os.environ.get("XEN_SSH_CONTROL") and playbook in host_playbooks:
         import shlex
         command.extend(["--ssh-common-args", "-o ControlPath=" +

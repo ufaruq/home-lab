@@ -1,0 +1,199 @@
+// Managed by monitoring_alloy. Credentials are read from a protected file.
+logging {
+  level = "warn"
+}
+
+local.file "grafana_token" {
+  filename = {{ monitoring_alloy_token_path | to_json }}
+  is_secret = true
+}
+
+{% if monitoring_alloy_platform == 'linux' %}
+prometheus.exporter.unix "host" {
+  set_collectors = ["cpu", "meminfo", "filesystem", "netdev", "stat", "time"]
+  include_exporter_metrics = false
+  filesystem {
+    fs_types_exclude = "^(autofs|binfmt_misc|bpf|cgroup2?|configfs|debugfs|devpts|devtmpfs|fuse.*|hugetlbfs|mqueue|nsfs|overlay|proc|procfs|pstore|ramfs|rpc_pipefs|securityfs|selinuxfs|squashfs|sysfs|tmpfs|tracefs)$"
+    mount_points_exclude = "^/(dev|proc|run|sys|var/lib/docker|var/lib/containers|var/lib/kubelet)($|/)"
+  }
+  netdev {
+    device_exclude = "^(veth.*|docker.*|br-.*|cni.*|flannel.*|lo)$"
+  }
+}
+{% else %}
+prometheus.exporter.windows "host" {
+  enabled_collectors = ["cpu", "memory", "logical_disk", "net", "system"]
+  logical_disk {
+    include = "^[A-Z]:$"
+  }
+}
+{% endif %}
+
+discovery.relabel "host" {
+  targets = prometheus.exporter.{{ 'unix' if monitoring_alloy_platform == 'linux' else 'windows' }}.host.targets
+  rule {
+    target_label = "job"
+    replacement = "homelab"
+  }
+  rule {
+    target_label = "host"
+    replacement = {{ inventory_hostname | to_json }}
+  }
+  rule {
+    target_label = "instance"
+    replacement = {{ inventory_hostname | to_json }}
+  }
+  rule {
+    target_label = "environment"
+    replacement = {{ monitoring_environment | to_json }}
+  }
+  rule {
+    target_label = "role"
+    replacement = {{ monitoring_role | to_json }}
+  }
+}
+
+prometheus.scrape "host" {
+  targets = discovery.relabel.host.output
+  forward_to = [prometheus.relabel.essential.receiver]
+  job_name = "homelab"
+  scrape_interval = "60s"
+  scrape_timeout = "10s"
+  sample_limit = {{ monitoring_alloy_sample_limit }}
+  label_limit = 20
+  label_name_length_limit = 100
+  label_value_length_limit = 200
+}
+
+prometheus.relabel "essential" {
+  forward_to = [prometheus.remote_write.grafana.receiver]
+  rule {
+    source_labels = ["__name__"]
+    regex = "up|node_cpu_seconds_total|node_memory_(MemTotal|MemAvailable)_bytes|node_filesystem_(avail|size)_bytes|node_filesystem_(readonly|device_error)|node_network_(receive|transmit)_(bytes|errs|drop)_total|node_boot_time_seconds|node_time_seconds|windows_cpu_time_total|windows_memory_(available|physical_total)_bytes|windows_logical_disk_(free|size)_bytes|windows_net_(bytes_received|bytes_sent|packets_received_errors|packets_outbound_errors)_total|windows_system_boot_time_timestamp"
+    action = "keep"
+  }
+}
+
+prometheus.remote_write "grafana" {
+  endpoint {
+    url = {{ monitoring_grafana_metrics_url | to_json }}
+    basic_auth {
+      username = {{ monitoring_grafana_metrics_username | to_json }}
+      password = local.file.grafana_token.content
+    }
+    queue_config {
+      capacity = 1000
+      min_shards = 1
+      max_shards = 1
+      max_samples_per_send = 500
+      sample_age_limit = "1h"
+    }
+  }
+  wal {
+    min_keepalive_time = "5m"
+    max_keepalive_time = "1h"
+  }
+}
+
+{% if monitoring_alloy_platform == 'linux' %}
+loki.source.file "selected" {
+  targets = [
+{% for path in monitoring_alloy_linux_log_files | unique %}
+    {__path__ = {{ path | to_json }}, job = "homelab", host = {{ inventory_hostname | to_json }}, environment = {{ monitoring_environment | to_json }}, role = {{ monitoring_role | to_json }}},
+{% endfor %}
+  ]
+  forward_to = [loki.process.bounded.receiver]
+  tail_from_end = true
+  on_positions_file_error = "restart_from_end"
+}
+{% else %}
+{% for channel in monitoring_alloy_windows_event_channels | unique %}
+loki.source.windowsevent "{{ channel | lower }}" {
+  eventlog_name = {{ channel | to_json }}
+  xpath_query = "*[System[(Level=1 or Level=2 or Level=3)]]"
+  bookmark_path = {{ (monitoring_alloy_storage_path ~ '\\' ~ (channel | lower) ~ '-bookmark.xml') | to_json }}
+  use_incoming_timestamp = true
+  exclude_user_data = true
+  exclude_event_data = true
+  labels = {job = "homelab", host = {{ inventory_hostname | to_json }}, environment = {{ monitoring_environment | to_json }}, role = {{ monitoring_role | to_json }}, channel = {{ channel | to_json }}}
+  forward_to = [loki.process.bounded.receiver]
+}
+{% endfor %}
+{% endif %}
+
+{% if monitoring_alloy_platform == 'linux' and monitoring_alloy_container_syslog_enabled %}
+// Docker's native syslog logging driver connects from this host's daemon.
+// Only an exact APP-NAME tag allowlist becomes the bounded app label.
+loki.relabel "container_apps" {
+  forward_to = []
+  max_cache_size = 100
+  rule {
+    source_labels = ["__syslog_message_app_name"]
+    regex = {{ ('^homelab[.](' ~ (monitoring_alloy_container_syslog_apps | unique | join('|')) ~ ')$') | to_json }}
+    action = "keep"
+  }
+  rule {
+    source_labels = ["__syslog_message_app_name"]
+    regex = {{ ('^homelab[.](' ~ (monitoring_alloy_container_syslog_apps | unique | join('|')) ~ ')$') | to_json }}
+    target_label = "app"
+    replacement = "$1"
+  }
+}
+
+loki.source.syslog "containers" {
+  listener {
+    address = "127.0.0.1:1515"
+    protocol = "tcp"
+    syslog_format = "rfc5424"
+    idle_timeout = "120s"
+    max_message_length = 8192
+    use_incoming_timestamp = true
+    label_structured_data = false
+    labels = {job = "homelab", host = {{ inventory_hostname | to_json }}, environment = {{ monitoring_environment | to_json }}, role = {{ monitoring_role | to_json }}}
+  }
+  relabel_rules = loki.relabel.container_apps.rules
+  forward_to = [loki.process.bounded.receiver]
+}
+{% endif %}
+
+loki.process "bounded" {
+  forward_to = [loki.write.grafana.receiver]
+  stage.drop {
+    older_than = "1h"
+    drop_counter_reason = "too_old"
+  }
+  stage.drop {
+    longer_than = "4KB"
+    drop_counter_reason = "oversize"
+  }
+  // Redact the entire line on common credential/private-content markers.
+  // This deliberately sacrifices detail and cannot identify every secret.
+  stage.replace {
+    expression = `(?is)(.*(?:authorization|bearer\s+|password|passwd|secret|(?:access|refresh|id)[_-]?token|api[_-]?key|cookie|private[ _-]?key|[?&]token=|["']token["']\s*:|token\s*=|(?:prompt|messages|conversation|coordinates|latitude|longitude)["']?\s*[:=]).*)`
+    replace = "[REDACTED sensitive log entry]"
+  }
+  // Per-host line rate, not a monthly byte/billing cap.
+  stage.limit {
+    rate = {{ monitoring_alloy_log_rate }}
+    burst = {{ monitoring_alloy_log_burst }}
+    drop = true
+  }
+  stage.label_keep {
+    values = ["job", "host", "environment", "role", "filename", "channel", "app"]
+  }
+}
+
+loki.write "grafana" {
+  endpoint {
+    url = {{ monitoring_grafana_logs_url | to_json }}
+    basic_auth {
+      username = {{ monitoring_grafana_logs_username | to_json }}
+      password = local.file.grafana_token.content
+    }
+    batch_size = "256KiB"
+    batch_wait = "5s"
+    min_backoff_period = "1s"
+    max_backoff_period = "30s"
+    max_backoff_retries = 3
+  }
+}

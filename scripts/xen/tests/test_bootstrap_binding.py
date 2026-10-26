@@ -53,14 +53,14 @@ class BootstrapBindingTests(unittest.TestCase):
                         'vms':{ORIGINAL:{'uuid':ORIGINAL,'name_label':MANAGER_NAME,'disks':[{'vdi':{'name_label':'root','sr_uuid':SR}}]}}}
         self.policy={'vms':{ORIGINAL:{'power_state':'Running'}}}
     def state(self,current):return {'values':{'root_module':{'resources':[{'address':ADDRESS,'mode':'managed','values':{'id':current}}]}}}
-    def bootstrap(self,api,state):
+    def bootstrap(self,api,state,boot_policy=None):
         def remote(source):
             fake=types.SimpleNamespace(xapi_local=lambda:types.SimpleNamespace(xenapi=api))
             output=io.StringIO()
             with patch.dict(sys.modules,{'XenAPI':fake}),contextlib.redirect_stdout(output):
                 exec(compile(source,'<offline-bootstrap>','exec'),{})
             return json.loads(output.getvalue())
-        with patch.object(lab,'remote_json',side_effect=remote),patch.object(lab,'control_host_vars',return_value={'native_recovery_policy':BOOT_POLICY}):
+        with patch.object(lab,'remote_json',side_effect=remote),patch.object(lab,'control_host_vars',return_value={'native_recovery_policy':boot_policy or BOOT_POLICY}):
             return lab.bootstrap_management(self.inventory,self.policy,state)
     def test_restored_xoa_uses_managed_current_uuid(self):
         api=FakeAPI([RESTORED]);self.bootstrap(api,self.state(RESTORED))
@@ -68,6 +68,17 @@ class BootstrapBindingTests(unittest.TestCase):
     def test_initial_bootstrap_without_state_uses_original_uuid(self):
         api=FakeAPI([ORIGINAL]);self.bootstrap(api,{})
         self.assertEqual(api.starts,[ORIGINAL])
+    def test_multiple_autostart_guests_do_not_change_management_bootstrap_target(self):
+        policy=copy.deepcopy(BOOT_POLICY);extra='00000000-0000-4000-8000-000000000099'
+        policy['automatic_vm_ids']=[extra,ORIGINAL];policy['management_vm_id']=ORIGINAL
+        api=FakeAPI([ORIGINAL]);api.records[extra]=record(extra);api.records[extra]['name_label']='application'
+        self.bootstrap(api,{},policy)
+        self.assertEqual(api.starts,[ORIGINAL]);self.assertEqual(api.records[extra]['power_state'],'Halted')
+    def test_multiple_autostart_guests_without_manager_refused_before_remote(self):
+        policy=copy.deepcopy(BOOT_POLICY);policy['automatic_vm_ids'].append('00000000-0000-4000-8000-000000000099')
+        with patch.object(lab,'remote_json') as remote,patch.object(lab,'control_host_vars',return_value={'native_recovery_policy':policy}):
+            with self.assertRaisesRegex(ValueError,'management_vm_id'):lab.bootstrap_management(self.inventory,self.policy,{})
+            remote.assert_not_called()
     def test_wrong_host_and_pool_refused_before_start(self):
         for kind in ['host_ids','pool_ids']:
             with self.subTest(kind=kind):

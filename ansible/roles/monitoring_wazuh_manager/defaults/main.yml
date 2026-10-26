@@ -1,0 +1,20 @@
+---
+monitoring_access_verified: false
+monitoring_deployment_approved: false
+monitoring_wazuh_mode: adopt
+monitoring_wazuh_manager_version: '4.7.5'
+monitoring_wazuh_fresh_approved: false
+monitoring_wazuh_arm_small_approved: false
+monitoring_wazuh_fresh_version: '4.14.9'
+monitoring_wazuh_installer_sha256: ''
+monitoring_wazuh_retention_approved: false
+monitoring_wazuh_indexer_url: ''
+monitoring_wazuh_indexer_username: ''
+monitoring_wazuh_indexer_password: ''
+monitoring_wazuh_indexer_ca_path: ''
+monitoring_wazuh_group_assignments: []
+monitoring_wazuh_syslog_enabled: false
+monitoring_wazuh_syslog_vpn_verified: false
+monitoring_wazuh_syslog_bind_address: ''
+monitoring_wazuh_syslog_source_address: ''
+monitoring_wazuh_syslog_port: 514
