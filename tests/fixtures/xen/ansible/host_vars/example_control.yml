@@ -1,0 +1,79 @@
+{
+  "ansible_host": "192.0.2.10",
+  "ansible_python_interpreter": "/usr/bin/python",
+  "ansible_user": "root",
+  "control_host_only": true,
+  "native_recovery_policy": {
+    "automatic_vm_ids": [
+      "00000000-0000-4000-8000-000000000001"
+    ],
+    "expected_host_uuid": "11111111-1111-4111-8111-111111111111",
+    "expected_pool_uuid": "22222222-2222-4222-8222-222222222222",
+    "stock_sha256": {
+      "/opt/xensource/bin/xapi-autostart-vms": "2222222222222222222222222222222222222222222222222222222222222222",
+      "/usr/lib/systemd/system/xapi-domains.service": "1111111111111111111111111111111111111111111111111111111111111111"
+    }
+  },
+  "network_profile": {
+    "expected_host_uuid": "11111111-1111-4111-8111-111111111111",
+    "expected_pool_uuid": "22222222-2222-4222-8222-222222222222",
+    "pifs": {
+      "90000000-0000-4000-8000-000000000001": {
+        "DNS": "192.0.2.53",
+        "IP": "192.0.2.10",
+        "gateway": "",
+        "mac": "02:00:00:00:ff:01",
+        "management": true,
+        "mode": "Static",
+        "netmask": "255.255.255.0",
+        "network_uuid": "10000000-0000-4000-8000-000000000001",
+        "other_config": {
+          "defaultroute": "false",
+          "peerdns": "true"
+        },
+        "role": "recovery"
+      },
+      "90000000-0000-4000-8000-000000000003": {
+        "mac": "02:00:00:00:ff:03",
+        "management": false,
+        "mode": "DHCP",
+        "network_uuid": "10000000-0000-4000-8000-000000000005",
+        "other_config": {
+          "defaultroute": "true",
+          "peerdns": "false"
+        },
+        "role": "uplink"
+      }
+    },
+    "recovery_script": "/usr/local/sbin/direct-cable-network",
+    "recovery_script_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "schema_version": 1
+  },
+  "xcp_definition_allowlist": {
+    "00000000-0000-4000-8000-000000000003": "Example diskless"
+  },
+  "xcp_definition_apply": false,
+  "xcp_host_uuid": "11111111-1111-4111-8111-111111111111",
+  "xcp_native_definitions": [
+    {
+      "VCPUs_at_startup": "2",
+      "VCPUs_max": "2",
+      "disks": [],
+      "memory_dynamic_max": "2147483648",
+      "memory_dynamic_min": "1073741824",
+      "memory_static_max": "2147483648",
+      "memory_static_min": "536870912",
+      "name_label": "Example diskless",
+      "power_state": "Halted",
+      "uuid": "00000000-0000-4000-8000-000000000003",
+      "vifs": [
+        {
+          "MAC": "02:00:00:00:03:00",
+          "device": "0",
+          "network_uuid": "10000000-0000-4000-8000-000000000001",
+          "uuid": "70000000-0000-4000-8000-000000000030"
+        }
+      ]
+    }
+  ]
+}

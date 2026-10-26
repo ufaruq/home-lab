@@ -1,0 +1,89 @@
+---
+- name: Require verified guest evidence and an explicit desired configuration
+  ansible.builtin.assert:
+    that:
+      - guest_access_verified | bool
+      - guest_configuration_verified | bool
+      - guest_desired_state_declared | bool
+      - ansible_host is defined
+      - ansible_user is defined
+      - inventory_hostname in groups.linux_guests
+    fail_msg: >-
+      Enforcement is closed until guest access and observed configuration are verified and
+      desired users/groups/packages/services are explicitly declared. Do not infer apps from VM names.
+- name: Read actual target OS and Xen capabilities before any guest mutation
+  ansible.builtin.raw: |
+    uname -s
+    if [ -r /proc/xen/capabilities ]; then cat /proc/xen/capabilities; fi
+  register: guest_target_identity
+  changed_when: false
+  check_mode: false
+- name: Refuse non-Linux hosts and Xen control domains
+  ansible.builtin.assert:
+    that:
+      - (guest_target_identity.stdout_lines | map('trim') | reject('equalto', '') | list | first | default('')) == 'Linux'
+      - "'control_d' not in guest_target_identity.stdout"
+    fail_msg: >-
+      Guest state enforcement refused: target must be Linux and must not be a Xen control domain
+      (control_d). Check the actual inventory address and SSH connection routing before retrying.
+- name: Validate selected private file deployment before any mutation
+  ansible.builtin.include_tasks: private-files-validate.yml
+- name: Validate desired group entries
+  ansible.builtin.assert:
+    that:
+      - item.name is defined
+      - (item.state | default('present')) == 'present'
+  loop: "{{ guest_desired_groups }}"
+- name: Validate desired user entries
+  ansible.builtin.assert:
+    that:
+      - item.name is defined
+      - (item.state | default('present')) == 'present'
+      - item.password is not defined
+      - item.remove is not defined
+      - item.update_password | default('on_create') in ['always', 'on_create']
+      - item.password_hash is not defined or item.password_hash is match('^[$][A-Za-z0-9]+[$]')
+  loop: "{{ guest_desired_users }}"
+  no_log: true
+- name: Validate desired service entries
+  ansible.builtin.assert:
+    that:
+      - item.name is defined
+      - item.state is not defined or item.state in ['started', 'stopped']
+      - item.enabled is defined
+  loop: "{{ guest_desired_services }}"
+- name: Create declared groups without removal
+  ansible.builtin.group:
+    name: "{{ item.name }}"
+    gid: "{{ item.gid | default(omit) }}"
+    state: present
+  loop: "{{ guest_desired_groups }}"
+- name: Configure declared users and optional private password hashes without deletion
+  ansible.builtin.user:
+    name: "{{ item.name }}"
+    uid: "{{ item.uid | default(omit) }}"
+    group: "{{ item.group | default(omit) }}"
+    groups: "{{ item.groups | default(omit) }}"
+    append: true
+    shell: "{{ item.shell | default(omit) }}"
+    home: "{{ item.home | default(omit) }}"
+    create_home: "{{ item.create_home | default(false) }}"
+    password: "{{ item.password_hash | default(omit) }}"
+    update_password: "{{ item.update_password | default('on_create') }}"
+    state: present
+  loop: "{{ guest_desired_users }}"
+  no_log: true
+  diff: false
+- name: Install explicitly declared packages without repository or release upgrades
+  ansible.builtin.package:
+    name: "{{ guest_desired_packages }}"
+    state: present
+  when: guest_desired_packages | length > 0
+- name: Deploy selected reviewed application files
+  ansible.builtin.include_tasks: private-files-deploy.yml
+- name: Enforce explicitly declared service state
+  ansible.builtin.service:
+    name: "{{ item.name }}"
+    enabled: "{{ item.enabled }}"
+    state: "{{ item.state | default(omit) }}"
+  loop: "{{ guest_desired_services }}"

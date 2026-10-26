@@ -1,0 +1,97 @@
+{
+  "blocked_vm_count": 3,
+  "captured_vm_count": 4,
+  "scope": "Partial offline configuration evidence, not full rebuild or verified guest access",
+  "vms": [
+    {
+      "blockers": [],
+      "bsd_observed_only": false,
+      "inventory_name": "example_appliance",
+      "linux_baseline": true,
+      "manifest": "tests/fixtures/xen/guest-inventory/00000000-0000-4000-8000-000000000001.json",
+      "manifest_sha256": "4629b10a0d7cbc8a5f5d982cb7115ad324fa11b73a65a87773f9d9c62b56dfff",
+      "status": "partial_configuration_captured",
+      "vm_name": "Example appliance",
+      "vm_uuid": "00000000-0000-4000-8000-000000000001",
+      "windows_observed_only": false
+    },
+    {
+      "blockers": [],
+      "bsd_observed_only": true,
+      "inventory_name": "example_bsd",
+      "linux_baseline": false,
+      "manifest": "tests/fixtures/xen/guest-inventory/00000000-0000-4000-8000-000000000007.json",
+      "manifest_sha256": "48bcaa3b4c00cd1dc6959651df9684d103bff06e1974eb9c0c643555d5e5f9a5",
+      "status": "partial_configuration_captured",
+      "vm_name": "Example BSD",
+      "vm_uuid": "00000000-0000-4000-8000-000000000007",
+      "windows_observed_only": false
+    },
+    {
+      "blockers": [
+        "Example capture unavailable"
+      ],
+      "bsd_observed_only": false,
+      "inventory_name": "example_diskless",
+      "linux_baseline": false,
+      "manifest": "tests/fixtures/xen/guest-inventory/00000000-0000-4000-8000-000000000003.json",
+      "manifest_sha256": "9d8f5017e2e3a9149e1f6ff7552e5e24bf3aa4cd438ebb81459d5043ac3f1469",
+      "status": "blocked",
+      "vm_name": "Example diskless",
+      "vm_uuid": "00000000-0000-4000-8000-000000000003",
+      "windows_observed_only": false
+    },
+    {
+      "blockers": [
+        "Example capture unavailable"
+      ],
+      "bsd_observed_only": false,
+      "inventory_name": "example_legacy_desktop",
+      "linux_baseline": false,
+      "manifest": "tests/fixtures/xen/guest-inventory/00000000-0000-4000-8000-000000000004.json",
+      "manifest_sha256": "1274bf927d0dbbb538308fa0643e74c178b1cbc54d7fc1dbd1e1905e5586317e",
+      "status": "blocked",
+      "vm_name": "Example legacy desktop",
+      "vm_uuid": "00000000-0000-4000-8000-000000000004",
+      "windows_observed_only": false
+    },
+    {
+      "blockers": [],
+      "bsd_observed_only": false,
+      "inventory_name": "example_linux",
+      "linux_baseline": true,
+      "manifest": "tests/fixtures/xen/guest-inventory/00000000-0000-4000-8000-000000000002.json",
+      "manifest_sha256": "336404a4c86097fb1ca15e3b1e523f2d32a352b61923eb2a50e87f40bd784801",
+      "status": "partial_configuration_captured",
+      "vm_name": "Example Linux",
+      "vm_uuid": "00000000-0000-4000-8000-000000000002",
+      "windows_observed_only": false
+    },
+    {
+      "blockers": [
+        "Example capture unavailable"
+      ],
+      "bsd_observed_only": false,
+      "inventory_name": "example_storage",
+      "linux_baseline": false,
+      "manifest": "tests/fixtures/xen/guest-inventory/00000000-0000-4000-8000-000000000006.json",
+      "manifest_sha256": "79838f3028e313b00a67e4bf3b2fe7be5477d21748301559a3d4d4b31710b1d0",
+      "status": "blocked",
+      "vm_name": "Example storage",
+      "vm_uuid": "00000000-0000-4000-8000-000000000006",
+      "windows_observed_only": false
+    },
+    {
+      "blockers": [],
+      "bsd_observed_only": false,
+      "inventory_name": "example_uefi_desktop",
+      "linux_baseline": false,
+      "manifest": "tests/fixtures/xen/guest-inventory/00000000-0000-4000-8000-000000000005.json",
+      "manifest_sha256": "36b5f5bf28f3cb37d2257c82b5ecea1451cc0d1c8285b928ee3775fbd7fc9cad",
+      "status": "partial_configuration_captured",
+      "vm_name": "Example UEFI desktop",
+      "vm_uuid": "00000000-0000-4000-8000-000000000005",
+      "windows_observed_only": true
+    }
+  ]
+}

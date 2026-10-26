@@ -1,0 +1,9 @@
+---
+# Local validation only; does not include the deployment tasks or contact guests.
+- name: Check selected private configuration file policy
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  tasks:
+    - name: Validate private file declarations
+      ansible.builtin.include_tasks: ../roles/guest_state/tasks/private-files-validate.yml

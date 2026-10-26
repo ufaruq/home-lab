@@ -1,0 +1,58 @@
+---
+- name: Require a verified guest route and actual guest login before connection
+  ansible.builtin.assert:
+    that:
+      - guest_access_verified | bool
+      - ansible_host is defined
+      - ansible_host | length > 0
+      - ansible_user is defined
+      - ansible_user | length > 0
+    fail_msg: >-
+      Guest access is unverified. Cached addresses are only hints. Set this guest's actual
+      ansible_host, ansible_user and private SSH/WinRM authentication, then guest_access_verified=true.
+      Host root login does not establish guest access. This playbook never starts a guest.
+- name: Require controller artifact directory outside this checkout
+  ansible.builtin.assert:
+    that:
+      - audit_artifact_dir is string
+      - audit_artifact_dir.startswith('/')
+      - (audit_artifact_dir | realpath) != ((playbook_dir ~ '/../..') | realpath)
+      - not (audit_artifact_dir | realpath).startswith(((playbook_dir ~ '/../..') | realpath) ~ '/')
+    fail_msg: Audit artifacts must be saved to an absolute private directory outside the repository.
+- name: Create private controller artifact directory
+  ansible.builtin.file:
+    path: "{{ audit_artifact_dir }}"
+    state: directory
+    mode: '0700'
+  delegate_to: localhost
+  become: false
+  check_mode: false
+- name: Read Unix guest metadata without a remote Python requirement
+  ansible.builtin.raw: "{{ lookup('ansible.builtin.file', playbook_dir ~ '/../files/audit-unix.sh') }}"
+  register: unix_audit
+  when: inventory_hostname not in groups.windows_guests
+  changed_when: false
+  check_mode: false
+  no_log: true
+- name: Read Windows guest metadata through existing WinRM
+  ansible.builtin.raw: "{{ lookup('ansible.builtin.file', playbook_dir ~ '/../files/audit-windows.ps1') }}"
+  register: windows_audit
+  when: inventory_hostname in groups.windows_guests
+  changed_when: false
+  check_mode: false
+  no_log: true
+- name: Save private audit result on controller
+  ansible.builtin.copy:
+    content: >-
+      {{ {'host': inventory_hostname, 'vm_uuid': vm_uuid,
+           'cached_hints_unverified': cached_guest_hints,
+           'audit': (windows_audit.stdout if inventory_hostname in groups.windows_guests else unix_audit.stdout)} | to_nice_json }}
+    dest: "{{ audit_artifact_dir }}/{{ inventory_hostname }}.json"
+    mode: '0600'
+  delegate_to: localhost
+  become: false
+  check_mode: false
+  no_log: true
+- name: Report artifact location without guest details
+  ansible.builtin.debug:
+    msg: "Private read-only audit saved to {{ audit_artifact_dir }}/{{ inventory_hostname }}.json"

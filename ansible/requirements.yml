@@ -1,0 +1,3 @@
+---
+# Audits use builtin raw over SSH/WinRM; no external collections are required.
+collections: []

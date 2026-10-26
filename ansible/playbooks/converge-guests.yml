@@ -1,0 +1,59 @@
+---
+- name: Converge explicitly selected verified Linux guests and verify actual managed state
+  hosts: linux_guests
+  gather_facts: false
+  serial: 1
+  any_errors_fatal: true
+  tasks:
+    - name: Require an exact nonempty explicit selection and an apply run
+      ansible.builtin.assert:
+        that:
+          - guest_targets is defined
+          - guest_targets is sequence and guest_targets is not string
+          - guest_targets | length > 0
+          - guest_targets | unique | length == guest_targets | length
+          - guest_targets | difference(groups.linux_guests) | length == 0
+          - guest_targets | sort == ansible_play_hosts_all | sort
+          - convergence_preflight_only | default(false) is boolean
+          - not ansible_check_mode or convergence_preflight_only | default(false)
+        fail_msg: >-
+          Convergence requires nonempty unique guest_targets containing only Linux inventory names,
+          a --limit matching that exact selection, and an apply run (not --check) unless convergence_preflight_only=true.
+          The caller must reject a --limit matching zero hosts because Ansible otherwise skips the play.
+    - name: Require reviewed access and configuration policy before waiting or changing guests
+      ansible.builtin.assert:
+        that:
+          - hostvars[item].guest_access_verified | default(false) | bool
+          - hostvars[item].guest_configuration_verified | default(false) | bool
+          - hostvars[item].guest_desired_state_declared | default(false) | bool
+          - hostvars[item].ansible_host is defined and hostvars[item].ansible_host | length > 0
+          - hostvars[item].ansible_user is defined and hostvars[item].ansible_user | length > 0
+        fail_msg: >-
+          Selected guest lacks reviewed access/configuration/declaration policy or its actual address/login.
+          No VM is started and cached addresses do not satisfy access verification.
+      loop: "{{ guest_targets }}"
+      run_once: true
+    - name: Report guests outside this explicit convergence selection
+      ansible.builtin.debug:
+        msg:
+          selected: "{{ guest_targets }}"
+          not_converged_by_this_run: "{{ groups.guests | difference(guest_targets) | sort }}"
+          scope: Unselected, unsupported, or blocked guests remain explicitly unconfigured by this run.
+      run_once: true
+    - name: End after controller-only preflight when requested
+      ansible.builtin.meta: end_play
+      when: convergence_preflight_only | default(false) | bool
+    - name: Wait for existing authenticated guest SSH access without starting a VM
+      ansible.builtin.wait_for_connection:
+        timeout: "{{ guest_connection_timeout | default(120) }}"
+        connect_timeout: 5
+        sleep: 5
+    - name: Apply the selected guest's declared managed configuration once
+      ansible.builtin.include_role:
+        name: guest_state
+    - name: Verify declared settings with fresh read-only facts
+      ansible.builtin.include_role:
+        name: guest_verify
+    - name: Report successful verification of this selected guest
+      ansible.builtin.debug:
+        msg: "{{ inventory_hostname }}: declared managed settings verified; application data and unsupported settings remain outside this convergence scope."

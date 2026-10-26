@@ -1,0 +1,23 @@
+---
+- name: Reconcile reviewed XenAPI uplink and direct-recovery network profile
+  hosts: xcp_control
+  gather_facts: false
+  vars:
+    network_profile_apply: false
+    network_profile: "{{ lookup('ansible.builtin.file', network_profile_file | default(playbook_dir ~ '/profile.json')) | from_json }}"
+    network_helper_encoded: "{{ lookup('ansible.builtin.file', playbook_dir ~ '/network_profile.py') | b64encode }}"
+    network_helper_runner: "import base64; exec(compile(base64.b64decode('{{ network_helper_encoded }}'), '<home-lab-network-profile>', 'exec'))"
+  tasks:
+    - name: Require an explicit boolean apply choice
+      ansible.builtin.assert:
+        that:
+          - network_profile_apply is boolean
+          - network_profile is mapping
+    - name: Check or apply native PIF metadata without installing host software
+      ansible.builtin.raw: "/usr/bin/timeout 150 /usr/bin/python -c {{ network_helper_runner | quote }} --profile-base64 {{ (network_profile | to_json | b64encode) | quote }} {{ '--apply' if network_profile_apply and not ansible_check_mode else '--check' }}"
+      register: network_profile_result
+      check_mode: false
+      changed_when: network_profile_result.rc == 0 and ((network_profile_result.stdout_lines | select('match', '^[{]') | list | last | default('{}') | from_json).changed | default(false))
+    - name: Report operation summary and private backup location only
+      ansible.builtin.debug:
+        msg: "{{ network_profile_result.stdout_lines | select('match', '^[{]') | list | last | from_json }}"

@@ -1,0 +1,327 @@
+{
+  "cached_guest_hints": {
+    "ipv4_candidates": [
+      "192.0.2.27"
+    ],
+    "last_updated": "20000101T00:00:00Z",
+    "os_version": {
+      "distro": "FreeBSD",
+      "name": "Example OS"
+    },
+    "source": "Unverified cached metrics, not current reachability or guest inspection"
+  },
+  "configuration_owner": "terraform hardware; ansible guest state",
+  "discovery_gaps": [
+    "Guest SSH identity, access and routes remain unverified",
+    "BSD/OPNsense mutation and full rebuild policy are not implemented; excluded from Linux convergence",
+    "Private appliance configuration contains secrets and requires separately reviewed restoration policy",
+    "Kernel build, runtime health, application data and full restore verification remain incomplete",
+    "Observed guest IPv4 address duplicates a control-host interface on the same network; resolve before boot or network changes"
+  ],
+  "guest_access_status": "Offline BSD evidence only; access/desired gates false and Linux convergence excluded",
+  "guest_access_verified": false,
+  "guest_cached_address_candidate": "192.0.2.27",
+  "guest_configuration_verified": false,
+  "guest_desired_baseline_note": "BSD/OPNsense observed evidence only. No Linux package/account/service desired baseline is generated; BSD mutation and rebuild policy remain unsupported.",
+  "guest_desired_groups": [],
+  "guest_desired_packages": [],
+  "guest_desired_services": [],
+  "guest_desired_state_declared": false,
+  "guest_desired_users": [],
+  "guest_network_conflicts": [
+    {
+      "address": "198.51.100.1",
+      "guest_interface": "xn1",
+      "host_uuid": "11111111-1111-4111-8111-111111111111",
+      "kind": "guest_host_duplicate_ipv4",
+      "network_uuid": "10000000-0000-4000-8000-000000000004",
+      "note": "Guest and recorded Dom0 PIF share this IPv4 address on the same network. Resolve before firewall boot or network changes; no address/route change is authorized by this observation.",
+      "pif_uuid": "90000000-0000-4000-8000-000000000002",
+      "vlan": "42"
+    }
+  ],
+  "guest_observed_app_locations": [],
+  "guest_observed_application_capture": {},
+  "guest_observed_application_configuration": {
+    "interfaces": {
+      "example_vlan": {
+        "if": "xn1",
+        "ipaddr": "198.51.100.1"
+      }
+    }
+  },
+  "guest_observed_configuration_files": [],
+  "guest_observed_groups": [
+    {
+      "gid": 0,
+      "members": [],
+      "name": "root"
+    },
+    {
+      "gid": 1001,
+      "members": [],
+      "name": "example_user"
+    }
+  ],
+  "guest_observed_os": {
+    "distro": "freebsd",
+    "product_name": "Example OS 1.0",
+    "type": "freebsd"
+  },
+  "guest_observed_packages": [
+    {
+      "architecture": "all",
+      "package": "example-tool",
+      "version": "1.0"
+    }
+  ],
+  "guest_observed_readonly_revisit": {},
+  "guest_observed_readonly_service_config_directives": [],
+  "guest_observed_separate_data_disk_capture": {},
+  "guest_observed_users": [
+    {
+      "gid": 0,
+      "home": "/root",
+      "name": "root",
+      "shell": "/bin/sh",
+      "uid": 0
+    },
+    {
+      "gid": 1001,
+      "home": "/home/example_user",
+      "name": "example_user",
+      "shell": "/bin/sh",
+      "uid": 1001
+    }
+  ],
+  "guest_private_config_deploy_declared": false,
+  "guest_private_config_files": [],
+  "offline_capture": {
+    "blockers": [],
+    "bsd_observed_only": true,
+    "captured_at": "2000-01-01T00:00:00Z",
+    "historical_disk_observations": [
+      {
+        "errors": [],
+        "status": "captured",
+        "vdi_uuid": "50000000-0000-4000-8000-000000000008"
+      }
+    ],
+    "limitations": [
+      "Synthetic data for offline tests only"
+    ],
+    "linux_baseline_available": false,
+    "manifest": "tests/fixtures/xen/guest-inventory/00000000-0000-4000-8000-000000000007.json",
+    "revisit_captured_at": null,
+    "sha256": "48bcaa3b4c00cd1dc6959651df9684d103bff06e1974eb9c0c643555d5e5f9a5",
+    "source": "offline guest files presented read-only; not cached guest metrics",
+    "status": "partial_configuration_captured"
+  },
+  "vm_name": "Example BSD",
+  "vm_uuid": "00000000-0000-4000-8000-000000000007",
+  "xcp_observed": {
+    "HVM_boot_params": {
+      "firmware": "bios",
+      "order": "cdn"
+    },
+    "HVM_boot_policy": "BIOS order",
+    "PV_args": "",
+    "PV_bootloader": "",
+    "VCPUs_at_startup": "2",
+    "VCPUs_max": "2",
+    "attached_pci_uuids": [],
+    "cdroms": [],
+    "disks": [
+      {
+        "bootable": true,
+        "currently_attached": false,
+        "empty": false,
+        "mode": "RW",
+        "type": "Disk",
+        "unpluggable": false,
+        "userdevice": "0",
+        "uuid": "60000000-0000-4000-8000-000000000008",
+        "vdi": {
+          "allow_caching": false,
+          "is_a_snapshot": false,
+          "location": "50000000-0000-4000-8000-000000000008",
+          "managed": true,
+          "name_description": "Invented disk metadata",
+          "name_label": "Example operating system",
+          "on_boot": "persist",
+          "physical_utilisation": "1048576",
+          "read_only": false,
+          "sharable": false,
+          "sr_uuid": "30000000-0000-4000-8000-000000000001",
+          "type": "user",
+          "uuid": "50000000-0000-4000-8000-000000000008",
+          "virtual_size": "8589934592"
+        }
+      }
+    ],
+    "domain_type": "hvm",
+    "memory_dynamic_max": "2147483648",
+    "memory_dynamic_min": "1073741824",
+    "memory_static_max": "2147483648",
+    "memory_static_min": "536870912",
+    "name_label": "Example BSD",
+    "other_config": {
+      "auto_poweron": "false",
+      "base_template_name": "Example BSD template"
+    },
+    "platform": {},
+    "power_state": "Halted",
+    "uuid": "00000000-0000-4000-8000-000000000007",
+    "vgpu_uuids": [],
+    "vifs": [
+      {
+        "MAC": "02:00:00:00:07:01",
+        "MTU": "1500",
+        "currently_attached": false,
+        "device": "1",
+        "ipv4_allowed": [],
+        "ipv6_allowed": [],
+        "locking_mode": "network_default",
+        "network_uuid": "10000000-0000-4000-8000-000000000004",
+        "qos_algorithm_params": {},
+        "qos_algorithm_type": "",
+        "uuid": "70000000-0000-4000-8000-000000000071"
+      },
+      {
+        "MAC": "02:00:00:00:07:00",
+        "MTU": "1500",
+        "currently_attached": false,
+        "device": "0",
+        "ipv4_allowed": [],
+        "ipv6_allowed": [],
+        "locking_mode": "network_default",
+        "network_uuid": "10000000-0000-4000-8000-000000000001",
+        "qos_algorithm_params": {},
+        "qos_algorithm_type": "",
+        "uuid": "70000000-0000-4000-8000-000000000070"
+      }
+    ],
+    "vusb_uuids": []
+  },
+  "xcp_overlay_note": "Preserved evidence only; no extra metadata setters. Nested VBD/VIF attributes may also be unsupported by Terraform; review before adoption.",
+  "xcp_overlay_unenforced_fields": [
+    "HVM_boot_params",
+    "HVM_boot_policy",
+    "PV_args",
+    "PV_bootloader",
+    "affinity_host_uuid",
+    "attached_pci_uuids",
+    "blocked_operations",
+    "cdroms",
+    "domain_type",
+    "ha_restart_priority",
+    "last_known_guest_metrics",
+    "name_description",
+    "other_config",
+    "platform",
+    "start_delay",
+    "tags",
+    "vgpu_uuids",
+    "vusb_uuids"
+  ],
+  "xcp_snapshot_definition": {
+    "HVM_boot_params": {
+      "firmware": "bios",
+      "order": "cdn"
+    },
+    "HVM_boot_policy": "BIOS order",
+    "PV_args": "",
+    "PV_bootloader": "",
+    "VCPUs_at_startup": "2",
+    "VCPUs_max": "2",
+    "affinity_host_uuid": null,
+    "attached_pci_uuids": [],
+    "blocked_operations": [],
+    "cdroms": [],
+    "disks": [
+      {
+        "bootable": true,
+        "currently_attached": false,
+        "empty": false,
+        "mode": "RW",
+        "type": "Disk",
+        "unpluggable": false,
+        "userdevice": "0",
+        "uuid": "60000000-0000-4000-8000-000000000008",
+        "vdi": {
+          "allow_caching": false,
+          "is_a_snapshot": false,
+          "location": "50000000-0000-4000-8000-000000000008",
+          "managed": true,
+          "name_description": "Invented disk metadata",
+          "name_label": "Example operating system",
+          "on_boot": "persist",
+          "physical_utilisation": "1048576",
+          "read_only": false,
+          "sharable": false,
+          "sr_uuid": "30000000-0000-4000-8000-000000000001",
+          "type": "user",
+          "uuid": "50000000-0000-4000-8000-000000000008",
+          "virtual_size": "8589934592"
+        }
+      }
+    ],
+    "domain_type": "hvm",
+    "ha_restart_priority": "",
+    "last_known_guest_metrics": {
+      "last_updated": "20000101T00:00:00Z",
+      "networks": {
+        "0/ipv4/0": "192.0.2.27"
+      },
+      "os_version": {
+        "distro": "FreeBSD",
+        "name": "Example OS"
+      }
+    },
+    "memory_dynamic_max": "2147483648",
+    "memory_dynamic_min": "1073741824",
+    "memory_static_max": "2147483648",
+    "memory_static_min": "536870912",
+    "name_description": "Invented fixture only",
+    "name_label": "Example BSD",
+    "other_config": {
+      "auto_poweron": "false",
+      "base_template_name": "Example BSD template"
+    },
+    "platform": {},
+    "power_state": "Halted",
+    "start_delay": "0",
+    "tags": [],
+    "uuid": "00000000-0000-4000-8000-000000000007",
+    "vgpu_uuids": [],
+    "vifs": [
+      {
+        "MAC": "02:00:00:00:07:01",
+        "MTU": "1500",
+        "currently_attached": false,
+        "device": "1",
+        "ipv4_allowed": [],
+        "ipv6_allowed": [],
+        "locking_mode": "network_default",
+        "network_uuid": "10000000-0000-4000-8000-000000000004",
+        "qos_algorithm_params": {},
+        "qos_algorithm_type": "",
+        "uuid": "70000000-0000-4000-8000-000000000071"
+      },
+      {
+        "MAC": "02:00:00:00:07:00",
+        "MTU": "1500",
+        "currently_attached": false,
+        "device": "0",
+        "ipv4_allowed": [],
+        "ipv6_allowed": [],
+        "locking_mode": "network_default",
+        "network_uuid": "10000000-0000-4000-8000-000000000001",
+        "qos_algorithm_params": {},
+        "qos_algorithm_type": "",
+        "uuid": "70000000-0000-4000-8000-000000000070"
+      }
+    ],
+    "vusb_uuids": []
+  }
+}

@@ -1,0 +1,854 @@
+{
+  "bonds": {},
+  "captured_at": "2000-01-01T00:00:00Z",
+  "hosts": {
+    "11111111-1111-4111-8111-111111111111": {
+      "address": "192.0.2.10",
+      "name_label": "Example control",
+      "uuid": "11111111-1111-4111-8111-111111111111"
+    }
+  },
+  "networks": {
+    "10000000-0000-4000-8000-000000000001": {
+      "MTU": "1500",
+      "default_locking_mode": "unlocked",
+      "name_description": "Invented example network",
+      "name_label": "Example physical",
+      "other_config": {},
+      "purpose": [],
+      "tags": [],
+      "uuid": "10000000-0000-4000-8000-000000000001"
+    },
+    "10000000-0000-4000-8000-000000000002": {
+      "MTU": "1500",
+      "default_locking_mode": "unlocked",
+      "name_description": "Invented example network",
+      "name_label": "Example isolated",
+      "other_config": {},
+      "purpose": [],
+      "tags": [],
+      "uuid": "10000000-0000-4000-8000-000000000002"
+    },
+    "10000000-0000-4000-8000-000000000003": {
+      "MTU": "1500",
+      "default_locking_mode": "unlocked",
+      "name_description": "Invented example network",
+      "name_label": "Example internal",
+      "other_config": {
+        "is_host_internal_management_network": "true"
+      },
+      "purpose": [],
+      "tags": [],
+      "uuid": "10000000-0000-4000-8000-000000000003"
+    },
+    "10000000-0000-4000-8000-000000000004": {
+      "MTU": "1500",
+      "default_locking_mode": "unlocked",
+      "name_description": "Invented example network",
+      "name_label": "Example VLAN",
+      "other_config": {},
+      "purpose": [],
+      "tags": [],
+      "uuid": "10000000-0000-4000-8000-000000000004"
+    },
+    "10000000-0000-4000-8000-000000000005": {
+      "MTU": "1500",
+      "default_locking_mode": "unlocked",
+      "name_description": "Invented second physical network",
+      "name_label": "Example uplink",
+      "other_config": {},
+      "purpose": [],
+      "tags": [],
+      "uuid": "10000000-0000-4000-8000-000000000005"
+    }
+  },
+  "pbds": {},
+  "pcis": {},
+  "pifs": {
+    "90000000-0000-4000-8000-000000000001": {
+      "DNS": "",
+      "IP": "192.0.2.10",
+      "MAC": "02:00:00:00:ff:01",
+      "VLAN": "-1",
+      "currently_attached": true,
+      "device": "eth0",
+      "gateway": "",
+      "host_uuid": "11111111-1111-4111-8111-111111111111",
+      "ip_configuration_mode": "Static",
+      "management": true,
+      "netmask": "255.255.255.0",
+      "network_uuid": "10000000-0000-4000-8000-000000000001",
+      "other_config": {},
+      "physical": true,
+      "uuid": "90000000-0000-4000-8000-000000000001"
+    },
+    "90000000-0000-4000-8000-000000000002": {
+      "DNS": "",
+      "IP": "198.51.100.1",
+      "MAC": "02:00:00:00:ff:02",
+      "VLAN": "42",
+      "currently_attached": true,
+      "device": "eth0",
+      "gateway": "",
+      "host_uuid": "11111111-1111-4111-8111-111111111111",
+      "ip_configuration_mode": "Static",
+      "management": false,
+      "netmask": "255.255.255.0",
+      "network_uuid": "10000000-0000-4000-8000-000000000004",
+      "other_config": {},
+      "physical": false,
+      "uuid": "90000000-0000-4000-8000-000000000002"
+    },
+    "90000000-0000-4000-8000-000000000003": {
+      "DNS": "203.0.113.53",
+      "IP": "203.0.113.10",
+      "MAC": "02:00:00:00:ff:03",
+      "VLAN": "-1",
+      "currently_attached": true,
+      "device": "eth1",
+      "gateway": "203.0.113.1",
+      "host_uuid": "11111111-1111-4111-8111-111111111111",
+      "ip_configuration_mode": "DHCP",
+      "management": false,
+      "netmask": "255.255.255.0",
+      "network_uuid": "10000000-0000-4000-8000-000000000005",
+      "other_config": {},
+      "physical": true,
+      "uuid": "90000000-0000-4000-8000-000000000003"
+    }
+  },
+  "pools": {
+    "22222222-2222-4222-8222-222222222222": {
+      "auto_poweron": "true",
+      "default_sr_uuid": "30000000-0000-4000-8000-000000000001",
+      "master_uuid": "11111111-1111-4111-8111-111111111111",
+      "uuid": "22222222-2222-4222-8222-222222222222"
+    }
+  },
+  "schema_version": 1,
+  "snapshots": {},
+  "source": "Entirely invented example; not derived from a captured installation",
+  "storage_repositories": {
+    "30000000-0000-4000-8000-000000000001": {
+      "content_type": "user",
+      "name_label": "Example files",
+      "physical_size": "68719476736",
+      "physical_utilisation": "1073741824",
+      "shared": false,
+      "type": "ext",
+      "uuid": "30000000-0000-4000-8000-000000000001"
+    },
+    "30000000-0000-4000-8000-000000000002": {
+      "content_type": "user",
+      "name_label": "Example raw",
+      "physical_size": "68719476736",
+      "physical_utilisation": "1073741824",
+      "shared": false,
+      "type": "udev",
+      "uuid": "30000000-0000-4000-8000-000000000002"
+    },
+    "30000000-0000-4000-8000-000000000003": {
+      "content_type": "iso",
+      "name_label": "Example media",
+      "physical_size": "68719476736",
+      "physical_utilisation": "1073741824",
+      "shared": false,
+      "type": "iso",
+      "uuid": "30000000-0000-4000-8000-000000000003"
+    }
+  },
+  "templates": {
+    "40000000-0000-4000-8000-000000000001": {
+      "name_label": "Example Linux template",
+      "uuid": "40000000-0000-4000-8000-000000000001"
+    },
+    "40000000-0000-4000-8000-000000000002": {
+      "name_label": "Example desktop template",
+      "uuid": "40000000-0000-4000-8000-000000000002"
+    },
+    "40000000-0000-4000-8000-000000000003": {
+      "name_label": "Example BSD template",
+      "uuid": "40000000-0000-4000-8000-000000000003"
+    },
+    "40000000-0000-4000-8000-000000000004": {
+      "name_label": "Example verified recovery template",
+      "uuid": "40000000-0000-4000-8000-000000000004"
+    }
+  },
+  "vms": {
+    "00000000-0000-4000-8000-000000000001": {
+      "HVM_boot_params": {
+        "firmware": "bios",
+        "order": "cdn"
+      },
+      "HVM_boot_policy": "BIOS order",
+      "PV_args": "",
+      "PV_bootloader": "",
+      "VCPUs_at_startup": "2",
+      "VCPUs_max": "2",
+      "affinity_host_uuid": null,
+      "attached_pci_uuids": [],
+      "blocked_operations": [],
+      "cdroms": [],
+      "disks": [
+        {
+          "bootable": true,
+          "currently_attached": true,
+          "empty": false,
+          "mode": "RW",
+          "type": "Disk",
+          "unpluggable": false,
+          "userdevice": "0",
+          "uuid": "60000000-0000-4000-8000-000000000001",
+          "vdi": {
+            "allow_caching": false,
+            "is_a_snapshot": false,
+            "location": "50000000-0000-4000-8000-000000000001",
+            "managed": true,
+            "name_description": "Invented disk metadata",
+            "name_label": "Example operating system",
+            "on_boot": "persist",
+            "physical_utilisation": "1048576",
+            "read_only": false,
+            "sharable": false,
+            "sr_uuid": "30000000-0000-4000-8000-000000000001",
+            "type": "user",
+            "uuid": "50000000-0000-4000-8000-000000000001",
+            "virtual_size": "8589934592"
+          }
+        }
+      ],
+      "domain_type": "hvm",
+      "ha_restart_priority": "",
+      "last_known_guest_metrics": {
+        "last_updated": "20000101T00:00:00Z",
+        "networks": {
+          "0/ipv4/0": "192.0.2.21"
+        },
+        "os_version": {
+          "distro": "debian",
+          "name": "Example OS"
+        }
+      },
+      "memory_dynamic_max": "2147483648",
+      "memory_dynamic_min": "1073741824",
+      "memory_static_max": "2147483648",
+      "memory_static_min": "536870912",
+      "name_description": "Invented fixture only",
+      "name_label": "Example appliance",
+      "other_config": {
+        "auto_poweron": "true",
+        "base_template_name": "Example Linux template"
+      },
+      "platform": {},
+      "power_state": "Running",
+      "start_delay": "0",
+      "tags": [],
+      "uuid": "00000000-0000-4000-8000-000000000001",
+      "vgpu_uuids": [],
+      "vifs": [
+        {
+          "MAC": "02:00:00:00:01:00",
+          "MTU": "1500",
+          "currently_attached": true,
+          "device": "0",
+          "ipv4_allowed": [],
+          "ipv6_allowed": [],
+          "locking_mode": "network_default",
+          "network_uuid": "10000000-0000-4000-8000-000000000001",
+          "qos_algorithm_params": {},
+          "qos_algorithm_type": "",
+          "uuid": "70000000-0000-4000-8000-000000000010"
+        }
+      ],
+      "vusb_uuids": []
+    },
+    "00000000-0000-4000-8000-000000000002": {
+      "HVM_boot_params": {
+        "firmware": "bios",
+        "order": "cdn"
+      },
+      "HVM_boot_policy": "BIOS order",
+      "PV_args": "",
+      "PV_bootloader": "",
+      "VCPUs_at_startup": "2",
+      "VCPUs_max": "2",
+      "affinity_host_uuid": null,
+      "attached_pci_uuids": [],
+      "blocked_operations": [],
+      "cdroms": [],
+      "disks": [
+        {
+          "bootable": true,
+          "currently_attached": false,
+          "empty": false,
+          "mode": "RW",
+          "type": "Disk",
+          "unpluggable": false,
+          "userdevice": "0",
+          "uuid": "60000000-0000-4000-8000-000000000002",
+          "vdi": {
+            "allow_caching": false,
+            "is_a_snapshot": false,
+            "location": "50000000-0000-4000-8000-000000000002",
+            "managed": true,
+            "name_description": "Invented disk metadata",
+            "name_label": "Example operating system",
+            "on_boot": "persist",
+            "physical_utilisation": "1048576",
+            "read_only": false,
+            "sharable": false,
+            "sr_uuid": "30000000-0000-4000-8000-000000000001",
+            "type": "user",
+            "uuid": "50000000-0000-4000-8000-000000000002",
+            "virtual_size": "8589934592"
+          }
+        },
+        {
+          "bootable": false,
+          "currently_attached": false,
+          "empty": false,
+          "mode": "RW",
+          "type": "Disk",
+          "unpluggable": false,
+          "userdevice": "1",
+          "uuid": "60000000-0000-4000-8000-000000000003",
+          "vdi": {
+            "allow_caching": false,
+            "is_a_snapshot": false,
+            "location": "50000000-0000-4000-8000-000000000003",
+            "managed": true,
+            "name_description": "Invented disk metadata",
+            "name_label": "XO CloudConfigDrive",
+            "on_boot": "persist",
+            "physical_utilisation": "1048576",
+            "read_only": false,
+            "sharable": false,
+            "sr_uuid": "30000000-0000-4000-8000-000000000001",
+            "type": "user",
+            "uuid": "50000000-0000-4000-8000-000000000003",
+            "virtual_size": "1048576"
+          }
+        }
+      ],
+      "domain_type": "hvm",
+      "ha_restart_priority": "",
+      "last_known_guest_metrics": {
+        "last_updated": "20000101T00:00:00Z",
+        "networks": {
+          "0/ipv4/0": "192.0.2.22"
+        },
+        "os_version": {
+          "distro": "debian",
+          "name": "Example OS"
+        }
+      },
+      "memory_dynamic_max": "2147483648",
+      "memory_dynamic_min": "1073741824",
+      "memory_static_max": "2147483648",
+      "memory_static_min": "536870912",
+      "name_description": "Invented fixture only",
+      "name_label": "Example Linux",
+      "other_config": {
+        "auto_poweron": "false",
+        "base_template_name": "Example Linux template"
+      },
+      "platform": {},
+      "power_state": "Halted",
+      "start_delay": "0",
+      "tags": [],
+      "uuid": "00000000-0000-4000-8000-000000000002",
+      "vgpu_uuids": [],
+      "vifs": [
+        {
+          "MAC": "02:00:00:00:02:01",
+          "MTU": "1500",
+          "currently_attached": false,
+          "device": "1",
+          "ipv4_allowed": [],
+          "ipv6_allowed": [],
+          "locking_mode": "network_default",
+          "network_uuid": "10000000-0000-4000-8000-000000000004",
+          "qos_algorithm_params": {},
+          "qos_algorithm_type": "",
+          "uuid": "70000000-0000-4000-8000-000000000021"
+        },
+        {
+          "MAC": "02:00:00:00:02:00",
+          "MTU": "1500",
+          "currently_attached": false,
+          "device": "0",
+          "ipv4_allowed": [],
+          "ipv6_allowed": [],
+          "locking_mode": "network_default",
+          "network_uuid": "10000000-0000-4000-8000-000000000001",
+          "qos_algorithm_params": {},
+          "qos_algorithm_type": "",
+          "uuid": "70000000-0000-4000-8000-000000000020"
+        }
+      ],
+      "vusb_uuids": []
+    },
+    "00000000-0000-4000-8000-000000000003": {
+      "HVM_boot_params": {
+        "firmware": "bios",
+        "order": "cdn"
+      },
+      "HVM_boot_policy": "BIOS order",
+      "PV_args": "",
+      "PV_bootloader": "",
+      "VCPUs_at_startup": "2",
+      "VCPUs_max": "2",
+      "affinity_host_uuid": null,
+      "attached_pci_uuids": [],
+      "blocked_operations": [],
+      "cdroms": [],
+      "disks": [],
+      "domain_type": "hvm",
+      "ha_restart_priority": "",
+      "last_known_guest_metrics": {
+        "last_updated": "20000101T00:00:00Z",
+        "networks": {
+          "0/ipv4/0": "192.0.2.23"
+        },
+        "os_version": {
+          "distro": "debian",
+          "name": "Example OS"
+        }
+      },
+      "memory_dynamic_max": "2147483648",
+      "memory_dynamic_min": "1073741824",
+      "memory_static_max": "2147483648",
+      "memory_static_min": "536870912",
+      "name_description": "Invented fixture only",
+      "name_label": "Example diskless",
+      "other_config": {
+        "auto_poweron": "false",
+        "base_template_name": "Example Linux template"
+      },
+      "platform": {},
+      "power_state": "Halted",
+      "start_delay": "0",
+      "tags": [],
+      "uuid": "00000000-0000-4000-8000-000000000003",
+      "vgpu_uuids": [],
+      "vifs": [
+        {
+          "MAC": "02:00:00:00:03:00",
+          "MTU": "1500",
+          "currently_attached": false,
+          "device": "0",
+          "ipv4_allowed": [],
+          "ipv6_allowed": [],
+          "locking_mode": "network_default",
+          "network_uuid": "10000000-0000-4000-8000-000000000001",
+          "qos_algorithm_params": {},
+          "qos_algorithm_type": "",
+          "uuid": "70000000-0000-4000-8000-000000000030"
+        }
+      ],
+      "vusb_uuids": []
+    },
+    "00000000-0000-4000-8000-000000000004": {
+      "HVM_boot_params": {},
+      "HVM_boot_policy": "BIOS order",
+      "PV_args": "",
+      "PV_bootloader": "",
+      "VCPUs_at_startup": "2",
+      "VCPUs_max": "2",
+      "affinity_host_uuid": null,
+      "attached_pci_uuids": [],
+      "blocked_operations": [],
+      "cdroms": [],
+      "disks": [
+        {
+          "bootable": true,
+          "currently_attached": false,
+          "empty": false,
+          "mode": "RW",
+          "type": "Disk",
+          "unpluggable": false,
+          "userdevice": "0",
+          "uuid": "60000000-0000-4000-8000-000000000004",
+          "vdi": {
+            "allow_caching": false,
+            "is_a_snapshot": false,
+            "location": "50000000-0000-4000-8000-000000000004",
+            "managed": true,
+            "name_description": "Invented disk metadata",
+            "name_label": "Example operating system",
+            "on_boot": "persist",
+            "physical_utilisation": "1048576",
+            "read_only": false,
+            "sharable": false,
+            "sr_uuid": "30000000-0000-4000-8000-000000000001",
+            "type": "user",
+            "uuid": "50000000-0000-4000-8000-000000000004",
+            "virtual_size": "8589934592"
+          }
+        }
+      ],
+      "domain_type": "hvm",
+      "ha_restart_priority": "",
+      "last_known_guest_metrics": {
+        "last_updated": "20000101T00:00:00Z",
+        "networks": {
+          "0/ipv4/0": "192.0.2.24"
+        },
+        "os_version": {
+          "distro": "windows",
+          "name": "Example OS"
+        }
+      },
+      "memory_dynamic_max": "2147483648",
+      "memory_dynamic_min": "1073741824",
+      "memory_static_max": "2147483648",
+      "memory_static_min": "536870912",
+      "name_description": "Invented fixture only",
+      "name_label": "Example legacy desktop",
+      "other_config": {
+        "auto_poweron": "false",
+        "base_template_name": "Example desktop template"
+      },
+      "platform": {},
+      "power_state": "Halted",
+      "start_delay": "0",
+      "tags": [],
+      "uuid": "00000000-0000-4000-8000-000000000004",
+      "vgpu_uuids": [],
+      "vifs": [
+        {
+          "MAC": "02:00:00:00:04:00",
+          "MTU": "1500",
+          "currently_attached": false,
+          "device": "0",
+          "ipv4_allowed": [],
+          "ipv6_allowed": [],
+          "locking_mode": "network_default",
+          "network_uuid": "10000000-0000-4000-8000-000000000001",
+          "qos_algorithm_params": {},
+          "qos_algorithm_type": "",
+          "uuid": "70000000-0000-4000-8000-000000000040"
+        }
+      ],
+      "vusb_uuids": []
+    },
+    "00000000-0000-4000-8000-000000000005": {
+      "HVM_boot_params": {
+        "firmware": "uefi",
+        "order": "cdn"
+      },
+      "HVM_boot_policy": "BIOS order",
+      "PV_args": "",
+      "PV_bootloader": "",
+      "VCPUs_at_startup": "2",
+      "VCPUs_max": "2",
+      "affinity_host_uuid": null,
+      "attached_pci_uuids": [],
+      "blocked_operations": [],
+      "cdroms": [
+        {
+          "currently_attached": false,
+          "empty": false,
+          "mode": "RO",
+          "type": "CD",
+          "userdevice": "3",
+          "uuid": "60000000-0000-4000-8000-000000000099",
+          "vdi": {
+            "name_label": "Example installation media",
+            "sr_uuid": "30000000-0000-4000-8000-000000000003",
+            "uuid": "80000000-0000-4000-8000-000000000001",
+            "virtual_size": "1048576"
+          }
+        }
+      ],
+      "disks": [
+        {
+          "bootable": true,
+          "currently_attached": false,
+          "empty": false,
+          "mode": "RW",
+          "type": "Disk",
+          "unpluggable": false,
+          "userdevice": "0",
+          "uuid": "60000000-0000-4000-8000-000000000005",
+          "vdi": {
+            "allow_caching": false,
+            "is_a_snapshot": false,
+            "location": "50000000-0000-4000-8000-000000000005",
+            "managed": true,
+            "name_description": "Invented disk metadata",
+            "name_label": "Example operating system",
+            "on_boot": "persist",
+            "physical_utilisation": "1048576",
+            "read_only": false,
+            "sharable": false,
+            "sr_uuid": "30000000-0000-4000-8000-000000000001",
+            "type": "user",
+            "uuid": "50000000-0000-4000-8000-000000000005",
+            "virtual_size": "8589934592"
+          }
+        }
+      ],
+      "domain_type": "hvm",
+      "ha_restart_priority": "",
+      "last_known_guest_metrics": {
+        "last_updated": "20000101T00:00:00Z",
+        "networks": {
+          "0/ipv4/0": "192.0.2.25"
+        },
+        "os_version": {
+          "distro": "windows",
+          "name": "Example OS"
+        }
+      },
+      "memory_dynamic_max": "2147483648",
+      "memory_dynamic_min": "1073741824",
+      "memory_static_max": "2147483648",
+      "memory_static_min": "536870912",
+      "name_description": "Invented fixture only",
+      "name_label": "Example UEFI desktop",
+      "other_config": {
+        "auto_poweron": "false",
+        "base_template_name": "Example desktop template"
+      },
+      "platform": {
+        "secureboot": "true"
+      },
+      "power_state": "Halted",
+      "start_delay": "0",
+      "tags": [],
+      "uuid": "00000000-0000-4000-8000-000000000005",
+      "vgpu_uuids": [],
+      "vifs": [
+        {
+          "MAC": "02:00:00:00:05:00",
+          "MTU": "1500",
+          "currently_attached": false,
+          "device": "0",
+          "ipv4_allowed": [],
+          "ipv6_allowed": [],
+          "locking_mode": "network_default",
+          "network_uuid": "10000000-0000-4000-8000-000000000001",
+          "qos_algorithm_params": {},
+          "qos_algorithm_type": "",
+          "uuid": "70000000-0000-4000-8000-000000000050"
+        }
+      ],
+      "vusb_uuids": []
+    },
+    "00000000-0000-4000-8000-000000000006": {
+      "HVM_boot_params": {
+        "firmware": "bios",
+        "order": "cdn"
+      },
+      "HVM_boot_policy": "BIOS order",
+      "PV_args": "",
+      "PV_bootloader": "",
+      "VCPUs_at_startup": "2",
+      "VCPUs_max": "2",
+      "affinity_host_uuid": null,
+      "attached_pci_uuids": [],
+      "blocked_operations": [],
+      "cdroms": [],
+      "disks": [
+        {
+          "bootable": true,
+          "currently_attached": false,
+          "empty": false,
+          "mode": "RW",
+          "type": "Disk",
+          "unpluggable": false,
+          "userdevice": "0",
+          "uuid": "60000000-0000-4000-8000-000000000006",
+          "vdi": {
+            "allow_caching": false,
+            "is_a_snapshot": false,
+            "location": "50000000-0000-4000-8000-000000000006",
+            "managed": true,
+            "name_description": "Invented disk metadata",
+            "name_label": "Example operating system",
+            "on_boot": "persist",
+            "physical_utilisation": "1048576",
+            "read_only": false,
+            "sharable": false,
+            "sr_uuid": "30000000-0000-4000-8000-000000000001",
+            "type": "user",
+            "uuid": "50000000-0000-4000-8000-000000000006",
+            "virtual_size": "8589934592"
+          }
+        },
+        {
+          "bootable": false,
+          "currently_attached": false,
+          "empty": false,
+          "mode": "RW",
+          "type": "Disk",
+          "unpluggable": false,
+          "userdevice": "1",
+          "uuid": "60000000-0000-4000-8000-000000000007",
+          "vdi": {
+            "allow_caching": false,
+            "is_a_snapshot": false,
+            "location": "50000000-0000-4000-8000-000000000007",
+            "managed": true,
+            "name_description": "Invented disk metadata",
+            "name_label": "Example passthrough",
+            "on_boot": "persist",
+            "physical_utilisation": "1048576",
+            "read_only": false,
+            "sharable": false,
+            "sr_uuid": "30000000-0000-4000-8000-000000000002",
+            "type": "user",
+            "uuid": "50000000-0000-4000-8000-000000000007",
+            "virtual_size": "17179873280"
+          }
+        }
+      ],
+      "domain_type": "hvm",
+      "ha_restart_priority": "",
+      "last_known_guest_metrics": {
+        "last_updated": "20000101T00:00:00Z",
+        "networks": {
+          "0/ipv4/0": "192.0.2.26"
+        },
+        "os_version": {
+          "distro": "",
+          "name": "Example OS"
+        }
+      },
+      "memory_dynamic_max": "2147483648",
+      "memory_dynamic_min": "1073741824",
+      "memory_static_max": "2147483648",
+      "memory_static_min": "536870912",
+      "name_description": "Invented fixture only",
+      "name_label": "Example storage",
+      "other_config": {
+        "auto_poweron": "false",
+        "base_template_name": "Example Linux template"
+      },
+      "platform": {},
+      "power_state": "Halted",
+      "start_delay": "0",
+      "tags": [],
+      "uuid": "00000000-0000-4000-8000-000000000006",
+      "vgpu_uuids": [],
+      "vifs": [
+        {
+          "MAC": "02:00:00:00:06:00",
+          "MTU": "1500",
+          "currently_attached": false,
+          "device": "0",
+          "ipv4_allowed": [],
+          "ipv6_allowed": [],
+          "locking_mode": "network_default",
+          "network_uuid": "10000000-0000-4000-8000-000000000001",
+          "qos_algorithm_params": {},
+          "qos_algorithm_type": "",
+          "uuid": "70000000-0000-4000-8000-000000000060"
+        }
+      ],
+      "vusb_uuids": []
+    },
+    "00000000-0000-4000-8000-000000000007": {
+      "HVM_boot_params": {
+        "firmware": "bios",
+        "order": "cdn"
+      },
+      "HVM_boot_policy": "BIOS order",
+      "PV_args": "",
+      "PV_bootloader": "",
+      "VCPUs_at_startup": "2",
+      "VCPUs_max": "2",
+      "affinity_host_uuid": null,
+      "attached_pci_uuids": [],
+      "blocked_operations": [],
+      "cdroms": [],
+      "disks": [
+        {
+          "bootable": true,
+          "currently_attached": false,
+          "empty": false,
+          "mode": "RW",
+          "type": "Disk",
+          "unpluggable": false,
+          "userdevice": "0",
+          "uuid": "60000000-0000-4000-8000-000000000008",
+          "vdi": {
+            "allow_caching": false,
+            "is_a_snapshot": false,
+            "location": "50000000-0000-4000-8000-000000000008",
+            "managed": true,
+            "name_description": "Invented disk metadata",
+            "name_label": "Example operating system",
+            "on_boot": "persist",
+            "physical_utilisation": "1048576",
+            "read_only": false,
+            "sharable": false,
+            "sr_uuid": "30000000-0000-4000-8000-000000000001",
+            "type": "user",
+            "uuid": "50000000-0000-4000-8000-000000000008",
+            "virtual_size": "8589934592"
+          }
+        }
+      ],
+      "domain_type": "hvm",
+      "ha_restart_priority": "",
+      "last_known_guest_metrics": {
+        "last_updated": "20000101T00:00:00Z",
+        "networks": {
+          "0/ipv4/0": "192.0.2.27"
+        },
+        "os_version": {
+          "distro": "FreeBSD",
+          "name": "Example OS"
+        }
+      },
+      "memory_dynamic_max": "2147483648",
+      "memory_dynamic_min": "1073741824",
+      "memory_static_max": "2147483648",
+      "memory_static_min": "536870912",
+      "name_description": "Invented fixture only",
+      "name_label": "Example BSD",
+      "other_config": {
+        "auto_poweron": "false",
+        "base_template_name": "Example BSD template"
+      },
+      "platform": {},
+      "power_state": "Halted",
+      "start_delay": "0",
+      "tags": [],
+      "uuid": "00000000-0000-4000-8000-000000000007",
+      "vgpu_uuids": [],
+      "vifs": [
+        {
+          "MAC": "02:00:00:00:07:01",
+          "MTU": "1500",
+          "currently_attached": false,
+          "device": "1",
+          "ipv4_allowed": [],
+          "ipv6_allowed": [],
+          "locking_mode": "network_default",
+          "network_uuid": "10000000-0000-4000-8000-000000000004",
+          "qos_algorithm_params": {},
+          "qos_algorithm_type": "",
+          "uuid": "70000000-0000-4000-8000-000000000071"
+        },
+        {
+          "MAC": "02:00:00:00:07:00",
+          "MTU": "1500",
+          "currently_attached": false,
+          "device": "0",
+          "ipv4_allowed": [],
+          "ipv6_allowed": [],
+          "locking_mode": "network_default",
+          "network_uuid": "10000000-0000-4000-8000-000000000001",
+          "qos_algorithm_params": {},
+          "qos_algorithm_type": "",
+          "uuid": "70000000-0000-4000-8000-000000000070"
+        }
+      ],
+      "vusb_uuids": []
+    }
+  }
+}

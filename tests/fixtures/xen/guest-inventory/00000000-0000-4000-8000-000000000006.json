@@ -1,0 +1,23 @@
+{
+  "blockers": [
+    "Example capture unavailable"
+  ],
+  "capture_limitations": [
+    "Synthetic data for offline tests only"
+  ],
+  "captured_at": "2000-01-01T00:00:00Z",
+  "coverage_status": "blocked",
+  "disks": [
+    {
+      "errors": [
+        "Invented fixture: no offline observation supplied"
+      ],
+      "status": "blocked",
+      "vdi_uuid": "50000000-0000-4000-8000-000000000006"
+    }
+  ],
+  "schema_version": 1,
+  "source": "Hand-authored invented fixture, not a host capture",
+  "vm_name": "Example storage",
+  "vm_uuid": "00000000-0000-4000-8000-000000000006"
+}

@@ -1,0 +1,324 @@
+{
+  "cached_guest_hints": {
+    "ipv4_candidates": [
+      "192.0.2.21"
+    ],
+    "last_updated": "20000101T00:00:00Z",
+    "os_version": {
+      "distro": "debian",
+      "name": "Example OS"
+    },
+    "source": "Unverified cached metrics, not current reachability or guest inspection"
+  },
+  "configuration_owner": "terraform hardware; ansible guest state",
+  "discovery_gaps": [
+    "Guest login, routes, SSH host identity and access policy not verified",
+    "Desired baseline requires review before any enforcement",
+    "Historical package repository availability and installer artifacts unverified",
+    "Private configuration files require explicit per-file selection; archives are not blanket restoration instructions",
+    "Application data, secrets, workload restoration, runtime service state and full rebuild validation remain incomplete"
+  ],
+  "guest_access_status": "Offline evidence captured; connection and apply gates still default false in group_vars",
+  "guest_cached_address_candidate": "192.0.2.21",
+  "guest_desired_baseline_note": "Observed reconstruction baseline, not reviewed connection/enforcement policy. Offline symlinks prove enablement only; no running state inferred. Historical package versions require matching repositories/artifacts.",
+  "guest_desired_groups": [
+    {
+      "gid": 0,
+      "name": "root"
+    },
+    {
+      "gid": 1001,
+      "name": "example_user"
+    }
+  ],
+  "guest_desired_packages": [
+    "example-tool=1.0"
+  ],
+  "guest_desired_services": [
+    {
+      "enabled": true,
+      "name": "example.service"
+    }
+  ],
+  "guest_desired_users": [
+    {
+      "create_home": false,
+      "group": "root",
+      "groups": [],
+      "home": "/root",
+      "name": "root",
+      "shell": "/bin/sh",
+      "uid": 0
+    },
+    {
+      "create_home": false,
+      "group": "example_user",
+      "groups": [],
+      "home": "/home/example_user",
+      "name": "example_user",
+      "shell": "/bin/sh",
+      "uid": 1001
+    }
+  ],
+  "guest_network_conflicts": [],
+  "guest_observed_app_config_candidates": [],
+  "guest_observed_app_locations": [],
+  "guest_observed_application_capture": {},
+  "guest_observed_configuration_files": [],
+  "guest_observed_containers": [],
+  "guest_observed_groups": [
+    {
+      "gid": 0,
+      "members": [],
+      "name": "root"
+    },
+    {
+      "gid": 1001,
+      "members": [],
+      "name": "example_user"
+    }
+  ],
+  "guest_observed_network_config_files": [],
+  "guest_observed_network_config_observed": [],
+  "guest_observed_os": {
+    "distro": "debian",
+    "product_name": "Example OS 1.0",
+    "type": "linux"
+  },
+  "guest_observed_packages": [
+    {
+      "architecture": "all",
+      "package": "example-tool",
+      "version": "1.0"
+    }
+  ],
+  "guest_observed_readonly_revisit": {},
+  "guest_observed_separate_data_disk_capture": {},
+  "guest_observed_service_enablement": [
+    {
+      "path": "/etc/systemd/system/multi-user.target.wants/example.service",
+      "target": "/lib/systemd/system/example.service"
+    }
+  ],
+  "guest_observed_structured_network_config": [],
+  "guest_observed_users": [
+    {
+      "gid": 0,
+      "home": "/root",
+      "name": "root",
+      "shell": "/bin/sh",
+      "uid": 0
+    },
+    {
+      "gid": 1001,
+      "home": "/home/example_user",
+      "name": "example_user",
+      "shell": "/bin/sh",
+      "uid": 1001
+    }
+  ],
+  "guest_private_config_deploy_declared": false,
+  "guest_private_config_files": [],
+  "offline_capture": {
+    "blockers": [],
+    "bsd_observed_only": false,
+    "captured_at": "2000-01-01T00:00:00Z",
+    "historical_disk_observations": [
+      {
+        "errors": [],
+        "status": "captured",
+        "vdi_uuid": "50000000-0000-4000-8000-000000000001"
+      }
+    ],
+    "limitations": [
+      "Synthetic data for offline tests only"
+    ],
+    "linux_baseline_available": true,
+    "manifest": "tests/fixtures/xen/guest-inventory/00000000-0000-4000-8000-000000000001.json",
+    "revisit_captured_at": null,
+    "sha256": "4629b10a0d7cbc8a5f5d982cb7115ad324fa11b73a65a87773f9d9c62b56dfff",
+    "source": "offline guest files presented read-only; not cached guest metrics",
+    "status": "partial_configuration_captured"
+  },
+  "vm_name": "Example appliance",
+  "vm_uuid": "00000000-0000-4000-8000-000000000001",
+  "xcp_observed": {
+    "HVM_boot_params": {
+      "firmware": "bios",
+      "order": "cdn"
+    },
+    "HVM_boot_policy": "BIOS order",
+    "PV_args": "",
+    "PV_bootloader": "",
+    "VCPUs_at_startup": "2",
+    "VCPUs_max": "2",
+    "attached_pci_uuids": [],
+    "cdroms": [],
+    "disks": [
+      {
+        "bootable": true,
+        "currently_attached": true,
+        "empty": false,
+        "mode": "RW",
+        "type": "Disk",
+        "unpluggable": false,
+        "userdevice": "0",
+        "uuid": "60000000-0000-4000-8000-000000000001",
+        "vdi": {
+          "allow_caching": false,
+          "is_a_snapshot": false,
+          "location": "50000000-0000-4000-8000-000000000001",
+          "managed": true,
+          "name_description": "Invented disk metadata",
+          "name_label": "Example operating system",
+          "on_boot": "persist",
+          "physical_utilisation": "1048576",
+          "read_only": false,
+          "sharable": false,
+          "sr_uuid": "30000000-0000-4000-8000-000000000001",
+          "type": "user",
+          "uuid": "50000000-0000-4000-8000-000000000001",
+          "virtual_size": "8589934592"
+        }
+      }
+    ],
+    "domain_type": "hvm",
+    "memory_dynamic_max": "2147483648",
+    "memory_dynamic_min": "1073741824",
+    "memory_static_max": "2147483648",
+    "memory_static_min": "536870912",
+    "name_label": "Example appliance",
+    "other_config": {
+      "auto_poweron": "true",
+      "base_template_name": "Example Linux template"
+    },
+    "platform": {},
+    "power_state": "Running",
+    "uuid": "00000000-0000-4000-8000-000000000001",
+    "vgpu_uuids": [],
+    "vifs": [
+      {
+        "MAC": "02:00:00:00:01:00",
+        "MTU": "1500",
+        "currently_attached": true,
+        "device": "0",
+        "ipv4_allowed": [],
+        "ipv6_allowed": [],
+        "locking_mode": "network_default",
+        "network_uuid": "10000000-0000-4000-8000-000000000001",
+        "qos_algorithm_params": {},
+        "qos_algorithm_type": "",
+        "uuid": "70000000-0000-4000-8000-000000000010"
+      }
+    ],
+    "vusb_uuids": []
+  },
+  "xcp_overlay_note": "Preserved evidence only; no extra metadata setters. Nested VBD/VIF attributes may also be unsupported by Terraform; review before adoption.",
+  "xcp_overlay_unenforced_fields": [
+    "HVM_boot_params",
+    "HVM_boot_policy",
+    "PV_args",
+    "PV_bootloader",
+    "affinity_host_uuid",
+    "attached_pci_uuids",
+    "blocked_operations",
+    "cdroms",
+    "domain_type",
+    "ha_restart_priority",
+    "last_known_guest_metrics",
+    "name_description",
+    "other_config",
+    "platform",
+    "start_delay",
+    "tags",
+    "vgpu_uuids",
+    "vusb_uuids"
+  ],
+  "xcp_snapshot_definition": {
+    "HVM_boot_params": {
+      "firmware": "bios",
+      "order": "cdn"
+    },
+    "HVM_boot_policy": "BIOS order",
+    "PV_args": "",
+    "PV_bootloader": "",
+    "VCPUs_at_startup": "2",
+    "VCPUs_max": "2",
+    "affinity_host_uuid": null,
+    "attached_pci_uuids": [],
+    "blocked_operations": [],
+    "cdroms": [],
+    "disks": [
+      {
+        "bootable": true,
+        "currently_attached": true,
+        "empty": false,
+        "mode": "RW",
+        "type": "Disk",
+        "unpluggable": false,
+        "userdevice": "0",
+        "uuid": "60000000-0000-4000-8000-000000000001",
+        "vdi": {
+          "allow_caching": false,
+          "is_a_snapshot": false,
+          "location": "50000000-0000-4000-8000-000000000001",
+          "managed": true,
+          "name_description": "Invented disk metadata",
+          "name_label": "Example operating system",
+          "on_boot": "persist",
+          "physical_utilisation": "1048576",
+          "read_only": false,
+          "sharable": false,
+          "sr_uuid": "30000000-0000-4000-8000-000000000001",
+          "type": "user",
+          "uuid": "50000000-0000-4000-8000-000000000001",
+          "virtual_size": "8589934592"
+        }
+      }
+    ],
+    "domain_type": "hvm",
+    "ha_restart_priority": "",
+    "last_known_guest_metrics": {
+      "last_updated": "20000101T00:00:00Z",
+      "networks": {
+        "0/ipv4/0": "192.0.2.21"
+      },
+      "os_version": {
+        "distro": "debian",
+        "name": "Example OS"
+      }
+    },
+    "memory_dynamic_max": "2147483648",
+    "memory_dynamic_min": "1073741824",
+    "memory_static_max": "2147483648",
+    "memory_static_min": "536870912",
+    "name_description": "Invented fixture only",
+    "name_label": "Example appliance",
+    "other_config": {
+      "auto_poweron": "true",
+      "base_template_name": "Example Linux template"
+    },
+    "platform": {},
+    "power_state": "Running",
+    "start_delay": "0",
+    "tags": [],
+    "uuid": "00000000-0000-4000-8000-000000000001",
+    "vgpu_uuids": [],
+    "vifs": [
+      {
+        "MAC": "02:00:00:00:01:00",
+        "MTU": "1500",
+        "currently_attached": true,
+        "device": "0",
+        "ipv4_allowed": [],
+        "ipv6_allowed": [],
+        "locking_mode": "network_default",
+        "network_uuid": "10000000-0000-4000-8000-000000000001",
+        "qos_algorithm_params": {},
+        "qos_algorithm_type": "",
+        "uuid": "70000000-0000-4000-8000-000000000010"
+      }
+    ],
+    "vusb_uuids": []
+  }
+}

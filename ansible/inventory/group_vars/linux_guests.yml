@@ -1,0 +1,3 @@
+---
+# Requested Unix login candidate; actual guest authentication remains unverified.
+ansible_user: root
