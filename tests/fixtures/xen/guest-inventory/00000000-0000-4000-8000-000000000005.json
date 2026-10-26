@@ -1,0 +1,44 @@
+{
+  "blockers": [],
+  "capture_limitations": [
+    "Synthetic data for offline tests only"
+  ],
+  "captured_at": "2000-01-01T00:00:00Z",
+  "coverage_status": "partial_configuration_captured",
+  "disks": [
+    {
+      "configuration_files": [],
+      "errors": [],
+      "installed_applications": [
+        {
+          "app2_name": "Example application",
+          "app2_version": "1.0"
+        }
+      ],
+      "os": {
+        "distro": "windows",
+        "product_name": "Example desktop OS",
+        "type": "windows"
+      },
+      "status": "captured",
+      "vdi_uuid": "50000000-0000-4000-8000-000000000005",
+      "windows_network_interfaces": [
+        {
+          "IPAddress": [
+            "203.0.113.25"
+          ]
+        }
+      ],
+      "windows_services": [
+        {
+          "Start": 3,
+          "name": "ExampleService"
+        }
+      ]
+    }
+  ],
+  "schema_version": 1,
+  "source": "Hand-authored invented fixture, not a host capture",
+  "vm_name": "Example UEFI desktop",
+  "vm_uuid": "00000000-0000-4000-8000-000000000005"
+}

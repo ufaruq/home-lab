@@ -1,0 +1,27 @@
+---
+- name: Review or apply bounded normal log rotation checks after infrastructure workflow verification
+  hosts: xcp_control
+  gather_facts: false
+  vars:
+    logging_hardening_apply: false
+    logging_hardening_workflow_verified: false
+    logging_hardening_rollback: ''
+    logging_helper_encoded: "{{ lookup('ansible.builtin.file', playbook_dir ~ '/log_rotation.py') | b64encode }}"
+    logging_helper_runner: "import base64; exec(compile(base64.b64decode('{{ logging_helper_encoded }}'), '<home-lab-log-hardening>', 'exec'))"
+  tasks:
+    - name: Require explicit reviewed workflow and apply declarations
+      ansible.builtin.assert:
+        that:
+          - logging_hardening_apply is boolean
+          - logging_hardening_workflow_verified is boolean
+          - logging_hardening_rollback is string
+          - not logging_hardening_apply or ansible_check_mode or logging_hardening_workflow_verified
+        fail_msg: Host hardening apply requires explicit workflow_verified and apply booleans; check mode makes no host changes.
+    - name: Stream native Python 2-compatible helper without installing controller packages on Dom0
+      ansible.builtin.raw: "/usr/bin/python -c {{ logging_helper_runner | quote }} {{ '--apply' if logging_hardening_apply and not ansible_check_mode else '--check' }} {{ ('--rollback ' ~ (logging_hardening_rollback | quote)) if logging_hardening_rollback | length > 0 else '' }}"
+      register: logging_hardening_result
+      check_mode: false
+      changed_when: logging_hardening_result.rc == 0 and ((logging_hardening_result.stdout_lines | select('match', '^[{]') | list | last | default('{}') | from_json).changed | default(false))
+    - name: Report planned/applied file hashes and private backup location
+      ansible.builtin.debug:
+        msg: "{{ logging_hardening_result.stdout_lines | select('match', '^[{]') | list | last | from_json }}"

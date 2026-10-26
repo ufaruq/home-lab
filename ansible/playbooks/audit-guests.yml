@@ -1,0 +1,12 @@
+---
+- name: Read guest configuration metadata over SSH without changing guest configuration
+  hosts: linux_guests:bsd_guests:appliance_guests:unknown_guests
+  gather_facts: false
+  roles:
+    - guest_audit
+
+- name: Read Windows configuration metadata over existing WinRM
+  hosts: windows_guests
+  gather_facts: false
+  roles:
+    - guest_audit

@@ -1,0 +1,12 @@
+---
+- name: Copy only explicitly selected reviewed application configuration files
+  ansible.builtin.copy:
+    src: "{{ item.source }}"
+    dest: "{{ item.path }}"
+    mode: "{{ item.mode }}"
+    owner: "{{ item.owner | default(omit) }}"
+    group: "{{ item.group | default(omit) }}"
+    follow: false
+  loop: "{{ guest_private_config_files | default([]) }}"
+  no_log: true
+  diff: false

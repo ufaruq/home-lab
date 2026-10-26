@@ -1,0 +1,6 @@
+---
+audit_artifact_dir: /private/tmp/home-lab-guest-audit
+# Controller artifacts are private and must remain outside this checkout.
+guest_access_verified: false
+guest_configuration_verified: false
+guest_desired_state_declared: false

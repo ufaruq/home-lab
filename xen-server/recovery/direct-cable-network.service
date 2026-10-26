@@ -1,0 +1,13 @@
+[Unit]
+Description=Private direct Ethernet recovery address policy
+After=network.target openvswitch.service xcp-networkd.service xapi.service
+Wants=sshd.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/direct-cable-network
+RemainAfterExit=yes
+TimeoutStartSec=40
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,51 @@
+---
+- name: Require an explicit declaration for selected private configuration file deployment
+  ansible.builtin.assert:
+    that:
+      - guest_private_config_deploy_declared | default(false) | bool
+    fail_msg: Selected private configuration files require guest_private_config_deploy_declared=true after review.
+  when: guest_private_config_files | default([]) | length > 0
+- name: Validate literal file sources, destinations, modes, and SHA256 checksums
+  ansible.builtin.assert:
+    that:
+      - item.source is defined and item.source.startswith('/')
+      - item.path is defined and item.path.startswith('/')
+      - item.mode is defined and item.mode is string and item.mode is match('^0?[0-7]{3,4}$')
+      - item.checksum_sha256 is defined and item.checksum_sha256 is match('^[a-f0-9]{64}$')
+      - item.path | basename not in ['fstab', 'machine-id', 'passwd', 'shadow', 'group', 'gshadow', 'hostname', 'hosts', 'resolv.conf']
+      - not item.path.startswith('/etc/ssh/')
+      - not item.path.startswith('/etc/network/')
+      - not item.path.startswith('/etc/netplan/')
+      - not item.path.startswith('/etc/NetworkManager/')
+      - not item.path.startswith('/boot/')
+      - not item.path.startswith('/dev/')
+      - not item.path.startswith('/proc/')
+      - not item.path.startswith('/sys/')
+      - "'..' not in item.path.split('/')"
+      - item.path not in ['/', '/etc', '/var', '/home', '/root', '/srv', '/opt']
+      - (item.source | realpath) != ((playbook_dir ~ '/../..') | realpath)
+      - not (item.source | realpath).startswith(((playbook_dir ~ '/../..') | realpath) ~ '/')
+    fail_msg: Private file copies require one reviewed external source and one safe literal guest file path, mode, and SHA256; identity/network/boot files are excluded.
+  loop: "{{ guest_private_config_files | default([]) }}"
+  no_log: true
+  diff: false
+- name: Verify selected private file source checksums on controller before any configuration mutation
+  ansible.builtin.stat:
+    path: "{{ item.source }}"
+    checksum_algorithm: sha256
+    get_checksum: true
+    follow: false
+  loop: "{{ guest_private_config_files | default([]) }}"
+  delegate_to: localhost
+  become: false
+  register: guest_private_source_checks
+  no_log: true
+  diff: false
+- name: Require every selected private source to be a regular file with matching checksum
+  ansible.builtin.assert:
+    that:
+      - item.stat.isreg | default(false)
+      - item.stat.checksum | default('') == item.item.checksum_sha256
+  loop: "{{ guest_private_source_checks.results | default([]) }}"
+  no_log: true
+  diff: false

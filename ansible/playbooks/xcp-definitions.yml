@@ -1,0 +1,23 @@
+---
+- name: Audit or reconcile exact existing diskless VM definitions through native XAPI
+  hosts: xcp_control
+  gather_facts: false
+  vars:
+    xcp_helper_encoded: "{{ lookup('ansible.builtin.file', playbook_dir ~ '/../files/xapi_existing.py') | b64encode }}"
+    xcp_helper_runner: "import base64; exec(compile(base64.b64decode('{{ xcp_helper_encoded }}'), '<ansible-xapi-existing>', 'exec'))"
+  tasks:
+    - name: Require a boolean explicit apply selection
+      ansible.builtin.assert:
+        that:
+          - xcp_definition_apply is boolean
+          - xcp_definition_allowlist is defined
+          - xcp_definition_allowlist is mapping
+          - xcp_definition_allowlist | length > 0
+    - name: Run native Python helper without copying files or installing software on Dom0
+      ansible.builtin.raw: "/usr/bin/python -c {{ xcp_helper_runner | quote }} --desired-base64 {{ (xcp_native_definitions | to_json | b64encode) | quote }} --allowed-base64 {{ (xcp_definition_allowlist | to_json | b64encode) | quote }} {{ '--apply' if (xcp_definition_apply and not ansible_check_mode) else '--check' }}"
+      register: xcp_native_result
+      check_mode: false
+      changed_when: xcp_native_result.rc == 0 and ((xcp_native_result.stdout_lines | select('match', '^[{]') | list | last | default('{}') | from_json).changed | default(false))
+    - name: Show whitelisted definition differences and blockers
+      ansible.builtin.debug:
+        msg: "{{ xcp_native_result.stdout_lines | select('match', '^[{]') | list | last | from_json }}"

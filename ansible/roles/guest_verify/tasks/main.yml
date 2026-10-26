@@ -1,0 +1,53 @@
+---
+- name: Read current account metadata without reading password databases
+  ansible.builtin.getent:
+    database: passwd
+  no_log: true
+- name: Read current group membership metadata
+  ansible.builtin.getent:
+    database: group
+  no_log: true
+- name: Read installed package versions
+  ansible.builtin.package_facts:
+    manager: auto
+  when: guest_desired_packages | length > 0
+  no_log: true
+- name: Read current service enablement and runtime state
+  ansible.builtin.service_facts:
+  when: guest_desired_services | length > 0
+  no_log: true
+- name: Read selected deployed application file checksums and permissions
+  ansible.builtin.stat:
+    path: "{{ item.path }}"
+    checksum_algorithm: sha256
+    follow: false
+  loop: "{{ guest_private_config_files | default([]) }}"
+  register: guest_deployed_file_checks
+  no_log: true
+  diff: false
+- name: Build fresh file metadata map for verification
+  ansible.builtin.set_fact:
+    guest_verified_file_facts: "{{ guest_verified_file_facts | default({}) | combine({item.item.path: item.stat}) }}"
+  loop: "{{ guest_deployed_file_checks.results | default([]) }}"
+  no_log: true
+- name: Compare actual nonsecret managed state with declared configuration
+  ansible.builtin.set_fact:
+    guest_convergence_errors: >-
+      {{ {'users': guest_desired_users, 'groups': guest_desired_groups,
+          'packages': guest_desired_packages, 'services': guest_desired_services,
+          'files': guest_private_config_files | default([])} |
+         guest_state_errors({'passwd': ansible_facts.getent_passwd,
+                             'group': ansible_facts.getent_group,
+                             'packages': ansible_facts.packages | default({}),
+                             'services': ansible_facts.services | default({}),
+                             'files': guest_verified_file_facts | default({})}) }}
+  no_log: true
+- name: Require every declared nonsecret managed setting to match fresh guest facts
+  ansible.builtin.assert:
+    that:
+      - guest_convergence_errors | length == 0
+    fail_msg: "Guest convergence verification failed: {{ guest_convergence_errors | join('; ') }}"
+    success_msg: Declared account, package, service, and selected application file state verified.
+- name: Mark this explicitly selected guest verified
+  ansible.builtin.set_fact:
+    guest_convergence_verified: true

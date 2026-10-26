@@ -1,0 +1,23 @@
+---
+- name: Restore reviewed native XOA-only host boot and graceful shutdown wiring
+  hosts: xcp_control
+  gather_facts: false
+  vars:
+    native_recovery_apply: false
+    recovery_helper_encoded: "{{ lookup('ansible.builtin.file', playbook_dir ~ '/native_boot.py') | b64encode }}"
+    recovery_helper_runner: "import base64; exec(compile(base64.b64decode('{{ recovery_helper_encoded }}'), '<home-lab-native-boot>', 'exec'))"
+  tasks:
+    - name: Require an explicit boolean apply selection
+      ansible.builtin.assert:
+        that:
+          - native_recovery_apply is boolean
+          - native_recovery_policy is defined
+          - native_recovery_policy is mapping
+    - name: Run native Python helper without installing host packages or a custom agent
+      ansible.builtin.raw: "/usr/bin/python -c {{ recovery_helper_runner | quote }} --policy-base64 {{ (native_recovery_policy | to_json | b64encode) | quote }} {{ '--apply' if native_recovery_apply and not ansible_check_mode else '--check' }}"
+      register: native_recovery_result
+      check_mode: false
+      changed_when: native_recovery_result.rc == 0 and ((native_recovery_result.stdout_lines | select('match', '^[{]') | list | last | default('{}') | from_json).changed | default(false))
+    - name: Report native boot wiring and private original-state backup metadata
+      ansible.builtin.debug:
+        msg: "{{ native_recovery_result.stdout_lines | select('match', '^[{]') | list | last | from_json }}"

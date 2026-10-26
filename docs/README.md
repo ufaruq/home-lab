@@ -8,6 +8,8 @@ Comparison notes consolidated from our discussion, checked against the linked up
 2. [VM disks, storage backends, and snapshots explained](storage-comparison.md)
 3. [Making the lab reproducible before an upgrade or migration](reproducible-home-lab.md)
 
+The observed installation is now documented under [Xen server inventory and recovery notes](../xen-server/README.md), including hardware, VM definitions, network and storage metadata, and the incomplete-boot investigation. Those observations are separate from the comparison and design guidance below.
+
 ## Recommendation in plain language
 
 For a fresh homelab, Proxmox VE is an attractive default when you want integrated VM, container, networking, and storage management with a Debian foundation. This is a usability recommendation, not a claim that KVM is intrinsically faster or safer than Xen.

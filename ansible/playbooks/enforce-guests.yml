@@ -1,0 +1,6 @@
+---
+- name: Apply explicitly declared verified Linux guest configuration
+  hosts: linux_guests
+  gather_facts: false
+  roles:
+    - guest_state

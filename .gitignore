@@ -1,0 +1,59 @@
+# Terraform working directories, local inputs, state, and saved plans.
+**/.terraform/
+*.tfstate
+*.tfstate.*
+*.tfplan
+*.tfplan.json
+*.tfvars
+*.tfvars.json
+crash.log
+crash.*.log
+.superpowers/
+
+# Private Xen plans/runtime artifacts and controller caches.
+.local/
+**/__pycache__/
+*.py[cod]
+.pytest_cache/
+.venv/
+.venv-monitoring/
+*.retry
+
+# Deployment inventory, evidence and operating policy are local/private.
+/xen-server/inventory/
+/xen-server/evidence/
+/xen-server/guest-inventory/
+/xen-server/hardware.md
+/xen-server/setup.md
+/xen-server/debugging.md
+/xen-server/reliability.md
+/xen-server/mapping-status.md
+/xen-server/desired-state.json
+/xen-server/recovery/ssh_known_hosts
+/xen-server/recovery/known_hosts
+/ansible/inventory/host_vars/
+/ansible/inventory/hosts.yml
+/ansible/inventory/guest-coverage.json
+/ansible/networking/profile.json
+
+# Local disk/export images are backup material, never public source fixtures.
+*.xva
+*.vhd
+*.vhdx
+*.qcow
+*.qcow2
+*.vmdk
+*.raw
+*.img
+*.iso
+
+# Deliberately synthetic disk fixtures remain reviewable.
+!/tests/fixtures/**/*.xva
+!/tests/fixtures/**/*.vhd
+!/tests/fixtures/**/*.vhdx
+!/tests/fixtures/**/*.qcow
+!/tests/fixtures/**/*.qcow2
+!/tests/fixtures/**/*.vmdk
+!/tests/fixtures/**/*.raw
+!/tests/fixtures/**/*.img
+!/tests/fixtures/**/*.iso

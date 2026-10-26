@@ -1,0 +1,48 @@
+---
+- name: Capture point-in-time logging health privately without changing the host
+  hosts: xcp_control
+  gather_facts: false
+  vars:
+    logging_health_artifact_dir: /private/tmp/home-lab-host-health
+    logging_helper_encoded: "{{ lookup('ansible.builtin.file', playbook_dir ~ '/log_rotation.py') | b64encode }}"
+    logging_helper_runner: "import base64; exec(compile(base64.b64decode('{{ logging_helper_encoded }}'), '<home-lab-log-health>', 'exec'))"
+  tasks:
+    - name: Require private controller artifacts outside the checkout
+      ansible.builtin.assert:
+        that:
+          - logging_health_artifact_dir is string and logging_health_artifact_dir.startswith('/')
+          - (logging_health_artifact_dir | realpath) != ((playbook_dir ~ '/../..') | realpath)
+          - not (logging_health_artifact_dir | realpath).startswith(((playbook_dir ~ '/../..') | realpath) ~ '/')
+    - name: Read filesystem space/inodes and logging/cron service health
+      ansible.builtin.raw: "/usr/bin/python -c {{ logging_helper_runner | quote }} --health"
+      register: logging_health_result
+      failed_when: false
+      changed_when: false
+      check_mode: false
+      no_log: true
+    - name: Parse health status without exposing log contents
+      ansible.builtin.set_fact:
+        logging_health: "{{ logging_health_result.stdout_lines | select('match', '^[{]') | list | last | from_json }}"
+    - name: Create private health artifact directory
+      ansible.builtin.file:
+        path: "{{ logging_health_artifact_dir }}"
+        state: directory
+        mode: '0700'
+      delegate_to: localhost
+      become: false
+      check_mode: false
+    - name: Save private latest health evidence and original health exit code
+      ansible.builtin.copy:
+        content: "{{ {'host': inventory_hostname, 'health': logging_health, 'command_exit_code': logging_health_result.rc} | to_nice_json }}"
+        dest: "{{ logging_health_artifact_dir }}/{{ inventory_hostname }}.json"
+        mode: '0600'
+      delegate_to: localhost
+      become: false
+      check_mode: false
+      no_log: true
+    - name: Surface warnings and failures after preserving evidence
+      ansible.builtin.assert:
+        that:
+          - logging_health.exit_code == 0
+        fail_msg: "Logging health {{ logging_health.status }}: {{ logging_health.warnings | default([logging_health.message | default('health query failed')]) | join('; ') }}; private artifact {{ logging_health_artifact_dir }}/{{ inventory_hostname }}.json"
+        success_msg: "Logging health OK; private artifact {{ logging_health_artifact_dir }}/{{ inventory_hostname }}.json"

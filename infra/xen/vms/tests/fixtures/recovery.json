@@ -1,0 +1,1 @@
+{"schema_version":1,"vms":{"00000000-0000-4000-8000-000000000002":{"cpus":3,"memory_min":2147483648,"memory_max":3221225472,"power_state":"Running","recovery":{"template_id":"40000000-0000-4000-8000-000000000004","verified":true}}},"networks":{},"guest_targets":[]}

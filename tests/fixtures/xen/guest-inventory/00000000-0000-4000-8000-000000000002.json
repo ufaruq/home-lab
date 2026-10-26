@@ -1,0 +1,69 @@
+{
+  "blockers": [],
+  "capture_limitations": [
+    "Synthetic data for offline tests only"
+  ],
+  "captured_at": "2000-01-01T00:00:00Z",
+  "coverage_status": "partial_configuration_captured",
+  "disks": [
+    {
+      "application_configuration_observed": {},
+      "configuration_files": [],
+      "errors": [],
+      "groups": [
+        {
+          "gid": 0,
+          "members": [],
+          "name": "root"
+        },
+        {
+          "gid": 1001,
+          "members": [],
+          "name": "example_user"
+        }
+      ],
+      "network_config_observed": [],
+      "os": {
+        "distro": "debian",
+        "product_name": "Example OS 1.0",
+        "type": "linux"
+      },
+      "packages": [
+        {
+          "architecture": "all",
+          "package": "example-tool",
+          "version": "1.0"
+        }
+      ],
+      "readonly_service_config_directives": [],
+      "service_enablement": [
+        {
+          "path": "/etc/systemd/system/multi-user.target.wants/example.service",
+          "target": "/lib/systemd/system/example.service"
+        }
+      ],
+      "status": "captured",
+      "users": [
+        {
+          "gid": 0,
+          "home": "/root",
+          "name": "root",
+          "shell": "/bin/sh",
+          "uid": 0
+        },
+        {
+          "gid": 1001,
+          "home": "/home/example_user",
+          "name": "example_user",
+          "shell": "/bin/sh",
+          "uid": 1001
+        }
+      ],
+      "vdi_uuid": "50000000-0000-4000-8000-000000000002"
+    }
+  ],
+  "schema_version": 1,
+  "source": "Hand-authored invented fixture, not a host capture",
+  "vm_name": "Example Linux",
+  "vm_uuid": "00000000-0000-4000-8000-000000000002"
+}
