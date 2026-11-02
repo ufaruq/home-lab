@@ -87,13 +87,15 @@ def validate_policy(policy, inventory):
 def select_targets(policy, names, component):
     if not names or len(names) != len(set(names)):
         raise ValueError("Provide a nonempty list of unique explicit inventory names")
-    required = {"collectors": "alloy", "manager": "wazuh-manager", "opnsense": "opnsense-syslog"}
+    required = {"collectors": {"alloy", "wazuh-agent"}, "manager": {"wazuh-manager"}, "opnsense": {"opnsense-syslog"}}
     if component not in required:
         raise ValueError("Unknown monitoring deployment component")
     for name in names:
         host = policy["hosts"].get(name)
-        if not host or host["status"] != "planned" or required[component] not in host["components"]:
+        if not host or host["status"] != "planned" or not required[component].intersection(host["components"]):
             raise ValueError("Target is unknown, blocked, agentless, or incompatible: " + name)
+        if component == "collectors" and policy["grafana"]["observed_plan"] == "trial" and "alloy" not in host["components"]:
+            raise ValueError("Wazuh-only endpoints require verified Free mode; Trial allows Alloy only: " + name)
     return list(names)
 
 

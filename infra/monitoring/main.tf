@@ -58,6 +58,7 @@ resource "terraform_data" "fleet" {
       condition = (var.free_plan_verified && local.fleet.grafana.observed_plan == "free" && local.fleet.grafana.live_apply_enabled == true) || (
         var.unbilled_trial_collection_verified && local.fleet.grafana.observed_plan == "trial" &&
         local.fleet.grafana.trial_collector_apply_enabled == true &&
+        alltrue([for host in var.collector_targets : try(contains(local.fleet.hosts[host].components, "alloy"), false)]) &&
         length(var.wazuh_manager_targets) == 0 && length(var.opnsense_targets) == 0
       )
       error_message = "Collector deployment requires verified Free or unbilled Trial; the Trial path permits only Alloy collectors, not Wazuh manager or OPNsense changes."

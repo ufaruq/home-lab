@@ -10,6 +10,7 @@ import tempfile
 from pathlib import Path
 import unittest
 import xml.etree.ElementTree as ET
+import yaml
 
 ROOT = Path(__file__).resolve().parents[2]
 
@@ -237,6 +238,30 @@ class ApplianceTests(unittest.TestCase):
 
 
 class DeploymentGateTests(unittest.TestCase):
+    def test_linux_agent_package_pin_handles_debian_and_rpm_release_fields(self):
+        binary = os.environ.get('ANSIBLE_PLAYBOOK') or shutil.which('ansible-playbook')
+        if not binary:
+            self.skipTest('Set ANSIBLE_PLAYBOOK to exercise the real version assertion')
+        tasks = yaml.safe_load((ROOT / 'ansible/roles/monitoring_wazuh_agent/tasks/linux.yml').read_text())
+        guard = next(t for t in tasks if t['name'] == 'Preserve installed release and reject automatic upgrades')
+        cases = [
+            ('Debian', {'version': '4.14.9-1'}, True),
+            ('Debian', {'version': '4.14.9'}, False),
+            ('RedHat', {'version': '4.14.9', 'release': '1'}, True),
+            ('RedHat', {'version': '4.14.8', 'release': '1'}, False),
+            ('RedHat', {'version': '4.14.9', 'release': '2'}, False),
+            ('RedHat', {'version': '4.14.9'}, False),
+            ('Suse', {'version': '4.14.9-1'}, False),
+        ]
+        with tempfile.TemporaryDirectory() as directory:
+            for family, package, accepted in cases:
+                variables = {'monitoring_wazuh_agent_version': '4.14.9',
+                    'ansible_facts': {'os_family': family, 'packages': {'wazuh-agent': [package]}}}
+                with self.subTest(family=family, package=package):
+                    result = self.run_play(binary, directory, [guard], variables)
+                    self.assertEqual(result.returncode == 0, accepted, result.stdout + result.stderr)
+                    self.assertIn('changed=0', result.stdout)
+
     def test_two_core_arm_requires_explicit_small_lab_approval_and_memory(self):
         binary = os.environ.get('ANSIBLE_PLAYBOOK') or shutil.which('ansible-playbook')
         if not binary:

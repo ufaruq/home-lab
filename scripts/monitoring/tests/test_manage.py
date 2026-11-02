@@ -86,6 +86,19 @@ class MonitoringPolicyTests(unittest.TestCase):
         self.assertEqual(manage.select_targets(self.policy, ["oracle_wazuh"], "manager"), ["oracle_wazuh"])
         self.assertEqual(manage.select_targets(self.policy, ["firewall"], "opnsense"), ["firewall"])
 
+    def test_verified_free_allows_wazuh_only_endpoints_without_metrics(self):
+        policy = copy.deepcopy(self.policy)
+        policy['grafana'].update(observed_plan='free', live_apply_enabled=True)
+        self.assertEqual(policy['hosts']['parrot_htb']['components'], ['wazuh-agent'])
+        self.assertEqual(manage.select_targets(policy, ['parrot_htb'], 'collectors'), ['parrot_htb'])
+        variables = manage.target_variables(policy, ['parrot_htb'])
+        self.assertNotIn('alloy', variables['monitoring_host_policies']['parrot_htb']['components'])
+        with self.assertRaises(ValueError):
+            manage.select_targets(self.policy, ['parrot_htb'], 'collectors')
+        policy['hosts']['parrot_htb']['components'] = []
+        with self.assertRaises(ValueError):
+            manage.select_targets(policy, ['parrot_htb'], 'collectors')
+
     def test_group_policy_stays_alert_only_for_test_labs(self):
         selected = manage.target_variables(self.policy, ["parrot_htb", "ubuntu_malware_lab", "maps"])
         self.assertEqual(selected["monitoring_host_policies"]["parrot_htb"]["environment"], "lab")

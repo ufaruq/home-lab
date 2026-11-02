@@ -38,6 +38,21 @@ run "trial_blocks_selected_host_deployment" {
   expect_failures = [terraform_data.fleet[0]]
 }
 
+run "wazuh_only_selection_is_valid_but_not_silently_skipped_during_trial" {
+  command = plan
+  variables {
+    free_plan_verified                 = false
+    unbilled_trial_collection_verified = true
+    collector_targets                  = ["parrot_htb"]
+    deployment_reviewed                = true
+  }
+  expect_failures = [terraform_data.fleet[0]]
+  assert {
+    condition     = length(output.selected_targets.collectors) == 1 && contains(output.selected_targets.collectors, "parrot_htb")
+    error_message = "Wazuh-only targets must pass inventory validation while Trial deployment stays blocked."
+  }
+}
+
 run "review_is_required_for_nonempty_selection" {
   command = plan
   variables {

@@ -94,9 +94,9 @@ variable "collector_targets" {
     condition = alltrue([for host in var.collector_targets : try(
       local.fleet.hosts[host].status == "planned" &&
       contains(["linux", "windows"], local.fleet.hosts[host].platform) &&
-      contains(local.fleet.hosts[host].components, "alloy"), false
+      length(setintersection(toset(local.fleet.hosts[host].components), toset(["alloy", "wazuh-agent"]))) > 0, false
     )])
-    error_message = "Collector targets must be planned Linux/Windows Alloy members in monitoring/fleet.json. Unknown, blocked, agentless, appliance and dom0 targets are forbidden."
+    error_message = "Collector targets must be planned Linux/Windows Alloy or Wazuh-agent members in monitoring/fleet.json. Unknown, blocked, agentless, appliance and dom0 targets are forbidden."
   }
 }
 
