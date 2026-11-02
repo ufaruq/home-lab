@@ -71,7 +71,23 @@
         src: "{{ playbook_dir }}/../../monitoring/xcp/{{ item }}"
         dest: "{{ xcp_metrics_library_dir }}/{{ item }}"
         mode: '0600'
-      loop: [metrics.cjs, vm-metrics.cjs, vm-runtime.cjs, xo.cjs, collector.cjs, setup-reader.cjs]
+      loop: [metrics.cjs, vm-metrics.cjs, vm-runtime.cjs, xo.cjs, collector.cjs, setup-reader.cjs, reconcile-host.cjs]
+
+    - name: Reconcile the explicitly pinned existing hypervisor connection
+      ansible.builtin.command:
+        argv: ["{{ xcp_metrics_node }}", "{{ xcp_metrics_library_dir }}/reconcile-host.cjs"]
+        stdin: "{{ {'admin': {'email': xcp_admin_email, 'password': xcp_admin_password}, 'connection': xcp_host_connection, 'expected_host_id': xcp_metrics_config.host_id, 'expected_pool_id': xcp_metrics_config.pool_id, 'expected_host_name': xcp_metrics_config.host_name} | to_json }}"
+      when: xcp_host_connection is defined
+      register: xcp_connection_setup
+      changed_when: xcp_connection_setup.rc == 0 and (xcp_connection_setup.stdout | from_json).changed
+      failed_when: false
+      no_log: true
+
+    - name: Require a verified host connection before collector deployment
+      ansible.builtin.assert:
+        that: xcp_connection_setup.rc == 0
+        fail_msg: "XOA connection repair failed: {{ (xcp_connection_setup.stderr | trim) if ((xcp_connection_setup.stderr | trim) is match('^host_(connection|tls)_[a-z_]+$')) else 'unknown_failure' }}"
+      when: xcp_host_connection is defined
 
     - name: Reconcile the dedicated XOA viewer account
       ansible.builtin.command:

@@ -1,6 +1,6 @@
 'use strict';
 const READ_METHODS=['session.signInWithPassword','xo.getAllObjects','host.stats','vm.stats','acl.getCurrentPermissions'];
-const ADMIN_METHODS=[...READ_METHODS,'user.getAll','user.create','group.getAll','acl.get','acl.add'];
+const ADMIN_METHODS=[...READ_METHODS,'user.getAll','user.create','group.getAll','acl.get','acl.add','server.getAll','server.set','server.enable','server.disable'];
 async function connect(credentials, administrator=false) {
   const WebSocket=require('/usr/local/lib/node_modules/xo-server/node_modules/ws');
   const ws=new WebSocket('ws://127.0.0.1/api/',{maxPayload:4*1024*1024,handshakeTimeout:8000});

@@ -1,8 +1,8 @@
 # datacenter1 and VM resource monitoring
 
-**Current VM rollout:** dashboard and configuration are prepared; the collector
-update awaits XOA returning online after the owner's lab upgrade. See
-[deployment status](DEPLOYMENT.md). VM series are not verified live yet.
+**Current VM rollout:** live collection is verified for all 13 selected VM
+statuses, including resource metrics from the four running guests. Nine halted
+guests report status only. Parrot is excluded. See [deployment evidence](DEPLOYMENT.md).
 
 This pipeline collects **XCP-ng host and selected VM** metrics through XOA. A scheduled Node
 collector runs as the existing unprivileged `lab-automation` user on XOA. No
@@ -178,7 +178,7 @@ historical replay is provided, so network/Cloud outages leave gaps.
 Local checks:
 
 ```sh
-node --test scripts/monitoring/tests/xcp_metrics.test.cjs scripts/monitoring/tests/xcp_runtime.test.cjs scripts/monitoring/tests/xcp_vms.test.cjs
+node --test scripts/monitoring/tests/xcp_metrics.test.cjs scripts/monitoring/tests/xcp_runtime.test.cjs scripts/monitoring/tests/xcp_vms.test.cjs scripts/monitoring/tests/xcp_connection.test.cjs
 python3 -m unittest discover -s scripts/monitoring/tests -p test_xcp.py
 terraform -chdir=infra/xcp-monitoring fmt -check
 ```
@@ -242,3 +242,57 @@ The last query must return no series. `power_state` values are running=1,
 halted=0, paused=2, suspended=3, missing/unknown=-1. No resource zeros are invented
 for stopped or unsupported guests. These series share the existing Free stack;
 check total fleet usage through the existing usage dashboard as scope grows.
+
+## Repair a stale XOA hypervisor connection
+
+An upgrade or management-address change can leave XOA reachable over Tailscale
+while its saved hypervisor connection points to a stale address. A second
+connection with an incorrect password does not repair the original entry.
+
+The optional top-level **private** deployment input `xcp_host_connection` enables
+an idempotent repair through the same Terraform/Ansible path. Omit it when no
+repair is declared. It contains no host password:
+
+```json
+{
+  "xcp_host_connection": {
+    "server_id": "EXISTING_ORIGINAL_XOA_SERVER_UUID",
+    "previous_host": "PREVIOUS_PRIVATE_IPV4_ADDRESS",
+    "host": "VERIFIED_CURRENT_PRIVATE_IPV4_ADDRESS",
+    "host_id": "EXPECTED_DATACENTER1_UUID",
+    "pool_id": "EXPECTED_EXISTING_POOL_UUID",
+    "host_name": "datacenter1",
+    "certificate_sha256": "64_LOWERCASE_HEX_CHARACTERS_FROM_TRUSTED_HOST_SSH",
+    "duplicate_server_id": "OPTIONAL_EXPLICIT_FAILED_DUPLICATE_UUID",
+    "duplicate_host": "OPTIONAL_VERIFIED_PRIVATE_IPV4_OF_DUPLICATE"
+  }
+}
+```
+
+Obtain the current management PIF/address and host/pool UUIDs through an already
+pinned host SSH session and its installed XenAPI bindings. Obtain the SHA-256
+fingerprint of the DER public certificate in `/etc/xensource/xapi-ssl.pem` on that
+same trusted connection. Do not accept a fingerprint solely from an unverified
+network endpoint. Keep actual addresses, UUIDs, pins and administrator inputs in
+the owner-only deployment JSON outside Git, and back it up before edits.
+
+The repair probes port 443 without sending credentials and requires the exact
+independently verified certificate pin. It then changes only the declared
+existing connection's address, reusing XOA's already-stored host credentials.
+It checks the actual host name/UUID and pool UUID before accepting success. An
+explicit duplicate is disabled only if its address matches `duplicate_host`
+(defaulting to the primary address) and it is already a failed authentication
+or unreachable entry; unrelated or connected entries are refused. A healthy
+primary is never disconnected to clean up a failed duplicate. No
+connection is deleted, no password is reset, and no VM/network setting changes.
+Errors trigger restoration of the previous endpoint/enabled state where the API
+remains available; a rollback failure is reported explicitly.
+
+Run `make monitoring-xcp-plan` and `make monitoring-xcp-up`, then verify live
+host/VM collection and a second no-change reconciliation. The helper and reader
+setup receive XOA admin credentials only through hidden stdin during deployment;
+the scheduled collector continues to store only viewer/write credentials. The
+repair preserves XOA's existing host TLS settings; it does not establish ongoing
+certificate pinning in XOA's own hypervisor client. If a certificate changes,
+verify it again through trusted host access and review the private pin before
+reconciling.

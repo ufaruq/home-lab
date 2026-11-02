@@ -101,3 +101,46 @@ already exists and should remain a no-op. Confirm per-VM status, Cloud delivery,
 all selected power states, absence of Parrot series and increasing resource
 source timestamps across at least two scheduled runs before declaring VM
 collection operational. Powered-off guests need not be started for monitoring.
+
+## Connection recovery and live VM verification — 2026-11-01 20:03:14 UTC
+
+The connection and VM collection are operational as of this check, superseding
+the pending rollout status above. XOA is reachable through its existing pinned
+Tailscale SSH alias. Its original hypervisor entry had a stale management
+address; the other entry initially returned an authentication failure. The
+existing `xoaclient` entry became connected while diagnostics were running.
+No password reset or credential replacement was performed by this repair.
+
+Trusted recovery SSH verified datacenter1's host/pool UUIDs, current management
+address and public TLS certificate fingerprint. The Terraform-invoked Ansible
+role preserved the recovered working connection and disabled only the explicitly
+declared stale failed entry. No saved entry was deleted and no VM or host network
+setting was changed. The optional `reconcile-host.cjs` helper checks the independent
+certificate pin before any repair and verifies the host name/UUID and pool.
+Its deployment-only admin input remains hidden; scheduled collection still uses
+the dedicated viewer. Existing XOA host TLS settings are preserved; the repair
+probe does not add ongoing certificate pinning to XOA's own host client.
+
+Live evidence:
+
+- Both dashboards' **30 metric expressions** returned populated results.
+- Exactly **13 selected VM power-state series** were present; Parrot had **zero**
+  VM metric series. Wazuh, Portainer, TrueNAS and XOA supplied CPU/resource data;
+  nine halted guests supplied power/statistics-availability status only.
+- The collector reported **130 samples**, successful collection and HTTPS **204**
+  delivery. Grafana returned **130 active collector series**, below the local
+  1024-series cap. Cron was active with one once-per-minute entry and the private
+  remote configuration was mode 0600.
+- Wazuh range readback contained **11 distinct source timestamps** in the checked
+  ten-minute window. Latest status was fresh, all selected VM outcomes had no
+  failure, and every running selected VM had available statistics.
+- The final guarded Terraform plan showed **no-op** for both dashboards and the
+  local collector deployment record. No new cloud infrastructure or paid
+  subscription was created, and no guest was started for monitoring.
+- Nine synthetic connection-repair tests cover preserved credentials/settings,
+  no-op reconciliation, pin mismatch, wrong identity, rollback, strict ownership,
+  stale-entry cleanup and preserving a healthy primary on cleanup failure.
+
+[Open VM metrics](https://cordialbike2680.grafana.net/d/homelab-xcp-vms).
+Actual addresses, server/host/pool UUIDs, certificate pins, credentials and detailed
+verification reports remain in private owner-only controller files outside Git.

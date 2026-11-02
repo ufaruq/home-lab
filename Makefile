@@ -80,7 +80,7 @@ monitoring-inventory:
 monitoring-check:
 	$(PYTHON) scripts/monitoring/manage.py validate --inventory tests/fixtures/monitoring/hosts.json
 	$(PYTHON) -m unittest discover -s scripts/monitoring/tests -v
-	node --test scripts/monitoring/tests/xcp_metrics.test.cjs scripts/monitoring/tests/xcp_runtime.test.cjs scripts/monitoring/tests/xcp_vms.test.cjs
+	node --test scripts/monitoring/tests/xcp_metrics.test.cjs scripts/monitoring/tests/xcp_runtime.test.cjs scripts/monitoring/tests/xcp_vms.test.cjs scripts/monitoring/tests/xcp_connection.test.cjs
 	$(PYTHON) -m unittest discover -s ansible/tests -p 'test_monitoring_*.py' -v
 
 monitoring-syntax:
