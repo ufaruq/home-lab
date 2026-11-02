@@ -1,0 +1,17 @@
+#cloud-config
+ssh_pwauth: false
+disable_root: true
+package_update: false
+package_upgrade: false
+write_files:
+  - path: /etc/ssh/sshd_config.d/60-homelab.conf
+    owner: root:root
+    permissions: '0600'
+    content: |
+      PasswordAuthentication no
+      KbdInteractiveAuthentication no
+      PermitRootLogin no
+      MaxAuthTries 3
+runcmd:
+  - [sshd, -t]
+  - [systemctl, reload, ssh]

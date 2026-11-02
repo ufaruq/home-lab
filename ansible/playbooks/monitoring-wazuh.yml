@@ -1,0 +1,14 @@
+---
+- name: Configure the selected Oracle Wazuh server
+  hosts: oracle_wazuh
+  gather_facts: false
+  become: true
+  serial: 1
+  any_errors_fatal: true
+  pre_tasks:
+    - name: Apply exact-selection and access safeguards
+      ansible.builtin.import_tasks: monitoring-preflight.yml
+  tasks:
+    - name: Adopt or explicitly bootstrap the central security stack
+      ansible.builtin.include_role:
+        name: monitoring_wazuh_manager

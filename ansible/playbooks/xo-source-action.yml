@@ -1,0 +1,34 @@
+---
+- name: Operate the installed management guest updater through its fixed sudo entrypoint
+  hosts: xoa_remote_access
+  gather_facts: false
+  any_errors_fatal: true
+  tasks:
+    - name: Require one explicit guest and supported operation
+      ansible.builtin.assert:
+        that:
+          - ansible_play_hosts_all | length == 1
+          - xo_source_operation in ['update', 'status']
+          - xoa_expected_vm_uuid is match('^[0-9a-f-]{36}$')
+    - name: Read actual guest identity
+      ansible.builtin.command: cat /sys/hypervisor/uuid
+      register: source_guest_uuid
+      changed_when: false
+    - name: Refuse to act on another guest
+      ansible.builtin.assert:
+        that: source_guest_uuid.stdout | trim | lower == xoa_expected_vm_uuid | lower
+    - name: Invoke only the root-owned policy entrypoint
+      ansible.builtin.command:
+        argv:
+          - sudo
+          - -n
+          - /usr/bin/python3
+          - /usr/local/libexec/home-lab-xo-source-update
+          - "{{ '--apply' if xo_source_operation == 'update' else '--status' }}"
+      register: source_result
+      async: 3600
+      poll: 15
+      changed_when: xo_source_operation == 'update' and 'already current' not in source_result.stdout
+    - name: Show deployed version or update result
+      ansible.builtin.debug:
+        msg: "{{ source_result.stdout }}"

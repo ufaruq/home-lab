@@ -1,0 +1,22 @@
+---
+- name: Require authorization before fresh bootstrap fact collection
+  ansible.builtin.assert:
+    that:
+      - monitoring_access_verified is sameas true
+      - monitoring_deployment_approved is sameas true
+      - monitoring_wazuh_fresh_approved is sameas true
+    fail_msg: Verified access and explicit deployment/fresh-install approval are required before querying the target.
+
+- name: Gather fresh bootstrap OS and hardware facts after access approval
+  ansible.builtin.setup:
+    gather_subset:
+      - '!all'
+      - '!min'
+      - distribution
+      - architecture
+      - hardware
+    filter:
+      - ansible_distribution*
+      - ansible_architecture
+      - ansible_memtotal_mb
+      - ansible_processor_vcpus

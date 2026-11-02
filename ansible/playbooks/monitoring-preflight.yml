@@ -1,0 +1,29 @@
+---
+# Included by monitoring plays before facts or target operations.
+- name: Validate an exact explicit component selection
+  ansible.builtin.assert:
+    that:
+      - monitoring_targets is defined
+      - monitoring_targets is sequence and monitoring_targets is not string
+      - monitoring_targets | length > 0
+      - monitoring_targets | unique | length == monitoring_targets | length
+      - monitoring_targets | sort == ansible_play_hosts_all | sort
+      - monitoring_host_policies is defined and monitoring_host_policies is mapping
+      - monitoring_preflight_only | default(false) is boolean
+    fail_msg: Use scripts/monitoring/manage.py with exact reviewed targets; patterns and implicit fleet deployment are not supported.
+  run_once: true
+- name: Check all selected hosts before contacting or changing any guest
+  ansible.builtin.assert:
+    that:
+      - hostvars[item].monitoring_access_verified | default(false) is boolean
+      - hostvars[item].monitoring_access_verified | default(false)
+      - hostvars[item].monitoring_deployment_approved | default(false) is boolean
+      - hostvars[item].monitoring_deployment_approved | default(false)
+      - item in monitoring_host_policies
+      - monitoring_host_policies[item].status == 'planned'
+    fail_msg: Monitoring access and configuration must be verified explicitly for every selected target.
+  loop: "{{ monitoring_targets }}"
+  run_once: true
+- name: End after controller-only preflight when requested
+  ansible.builtin.meta: end_play
+  when: monitoring_preflight_only | default(false)

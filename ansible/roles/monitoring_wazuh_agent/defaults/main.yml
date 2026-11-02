@@ -1,0 +1,15 @@
+---
+monitoring_access_verified: false
+monitoring_deployment_approved: false
+monitoring_wazuh_manager_version: '4.7.5'
+monitoring_wazuh_agent_version: ''
+monitoring_wazuh_manager_address: ''
+monitoring_wazuh_manager_port: 1514
+monitoring_wazuh_agent_install_approved: false
+monitoring_wazuh_disable_active_response_approved: false
+monitoring_wazuh_agent_package_sha256: ''
+monitoring_wazuh_enrollment_password: ''
+monitoring_wazuh_enrollment_tls_verified: false
+monitoring_wazuh_manager_ca_source: ''
+monitoring_wazuh_agent_group: homelab-linux
+monitoring_wazuh_windows_path: 'C:\Program Files (x86)\ossec-agent'

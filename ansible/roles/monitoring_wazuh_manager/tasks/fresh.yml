@@ -1,0 +1,67 @@
+---
+- name: Gather explicit fresh bootstrap prerequisites
+  ansible.builtin.include_tasks: fresh-facts.yml
+
+- name: Validate the explicitly selected fresh platform and capacity
+  ansible.builtin.include_tasks: fresh-platform.yml
+
+- name: Check all central component packages before bootstrap
+  ansible.builtin.package_facts:
+    manager: auto
+
+- name: Refuse bootstrap over partial installations or retained identities
+  ansible.builtin.stat:
+    path: '{{ item }}'
+  loop:
+    - /var/ossec
+    - /etc/wazuh-indexer
+    - /etc/wazuh-dashboard
+  register: monitoring_fresh_existing
+
+- name: Require truly clean target; partial installs require manual recovery
+  ansible.builtin.assert:
+    that:
+      - monitoring_fresh_existing.results | selectattr('stat.exists') | list | length == 0
+      - "'wazuh-manager' not in ansible_facts.packages"
+      - "'wazuh-indexer' not in ansible_facts.packages"
+      - "'wazuh-dashboard' not in ansible_facts.packages"
+
+- name: Create owner-only bootstrap workspace
+  ansible.builtin.file:
+    path: /root/homelab-wazuh-bootstrap
+    state: directory
+    mode: '0700'
+
+- name: Fetch checksum-reviewed official installation assistant
+  ansible.builtin.get_url:
+    url: https://packages.wazuh.com/4.14/wazuh-install.sh
+    dest: /root/homelab-wazuh-bootstrap/wazuh-install.sh
+    checksum: 'sha256:{{ monitoring_wazuh_installer_sha256 }}'
+    mode: '0700'
+    validate_certs: true
+
+- name: Read pinned release declaration without executing assistant code
+  ansible.builtin.command:
+    argv:
+      - python3
+      - -c
+      - >-
+        import pathlib,re;
+        s=pathlib.Path('/root/homelab-wazuh-bootstrap/wazuh-install.sh').read_text();
+        print(re.search(r'^readonly wazuh_version="([^"]+)"$',s,re.M).group(1))
+  register: monitoring_assistant_version
+  changed_when: false
+  check_mode: false
+
+- name: Require exact pinned assistant release
+  ansible.builtin.assert:
+    that:
+      - monitoring_assistant_version.stdout | trim == monitoring_wazuh_fresh_version
+
+- name: Install official all-in-one stack without overwrite or OS bypass
+  ansible.builtin.command:
+    argv: [bash, ./wazuh-install.sh, --all-in-one]
+    chdir: /root/homelab-wazuh-bootstrap
+    creates: /var/ossec/bin/wazuh-control
+  no_log: true
+  diff: false

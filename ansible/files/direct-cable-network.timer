@@ -1,0 +1,11 @@
+[Unit]
+Description=Recover direct Ethernet aliases after native network reconciliation
+
+[Timer]
+OnBootSec=45s
+OnUnitInactiveSec=30s
+AccuracySec=2s
+Unit=direct-cable-network.service
+
+[Install]
+WantedBy=timers.target

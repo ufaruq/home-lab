@@ -1,0 +1,14 @@
+---
+- name: Restart Linux Alloy
+  ansible.builtin.systemd_service:
+    name: alloy
+    daemon_reload: true
+    enabled: true
+    state: restarted
+  become: true
+
+- name: Restart Windows Alloy
+  ansible.windows.win_service:
+    name: Alloy
+    start_mode: auto
+    state: restarted

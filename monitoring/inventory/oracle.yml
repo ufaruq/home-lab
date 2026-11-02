@@ -1,0 +1,18 @@
+{
+  "all": {
+    "children": {
+      "linux_guests": {
+        "hosts": {
+          "oracle_wazuh": {
+            "ansible_user": "ubuntu",
+            "monitoring_access_verified": false,
+            "monitoring_deployment_approved": false,
+            "monitoring_wazuh_mode": "fresh",
+            "monitoring_wazuh_manager_version": "4.14.9",
+            "monitoring_wazuh_arm_small_approved": false
+          }
+        }
+      }
+    }
+  }
+}

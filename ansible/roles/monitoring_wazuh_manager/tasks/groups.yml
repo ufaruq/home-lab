@@ -1,0 +1,23 @@
+---
+- name: Validate explicit manager-side agent ID and group mapping
+  ansible.builtin.assert:
+    that:
+      - item.id is match('^[0-9]{3,8}$')
+      - item.id != '000'
+      - item.group in ['homelab-linux', 'homelab-windows', 'homelab-lab']
+      - item.group != 'homelab-lab' or (item.active_response_disabled_verified | default(false)) is sameas true
+  loop: '{{ monitoring_wazuh_group_assignments }}'
+
+- name: Read existing agent memberships
+  ansible.builtin.command:
+    argv: [/var/ossec/bin/agent_groups, -s, -i, '{{ item.id }}']
+  loop: '{{ monitoring_wazuh_group_assignments }}'
+  register: monitoring_wazuh_current_groups
+  changed_when: false
+
+- name: Add reviewed central group while preserving all other memberships
+  ansible.builtin.command:
+    argv: [/var/ossec/bin/agent_groups, -a, -i, '{{ item.item.id }}', -g, '{{ item.item.group }}', -q]
+  loop: '{{ monitoring_wazuh_current_groups.results }}'
+  when: item.item.group not in item.stdout
+  changed_when: true

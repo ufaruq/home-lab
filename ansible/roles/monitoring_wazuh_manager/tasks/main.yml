@@ -1,0 +1,65 @@
+---
+- name: Require verified manager access and exact deployment intent
+  ansible.builtin.assert:
+    that:
+      - monitoring_access_verified is sameas true
+      - monitoring_deployment_approved is sameas true
+      - monitoring_wazuh_mode in ['adopt', 'fresh']
+      - monitoring_wazuh_manager_version is match('^4\.[0-9]+\.[0-9]+$')
+      - monitoring_wazuh_syslog_enabled is not sameas true or monitoring_wazuh_syslog_vpn_verified is sameas true
+    fail_msg: Verified access, deployment approval and exact release are required; native plaintext syslog additionally requires verified WireGuard/IPsec protection.
+
+- name: Detect existing manager identity
+  ansible.builtin.stat:
+    path: /var/ossec/bin/wazuh-control
+  register: monitoring_manager_installed
+
+- name: Bootstrap only an explicitly approved clean manager
+  ansible.builtin.include_tasks: fresh.yml
+  when: monitoring_wazuh_mode == 'fresh' and not monitoring_manager_installed.stat.exists
+
+- name: Read installed manager release without modification
+  ansible.builtin.command: /var/ossec/bin/wazuh-control info
+  register: monitoring_manager_info
+  changed_when: false
+  check_mode: false
+
+- name: Refuse reinstall or automatic manager upgrade
+  ansible.builtin.assert:
+    that:
+      - "('WAZUH_VERSION=\"v' ~ monitoring_wazuh_manager_version ~ '\"') in monitoring_manager_info.stdout"
+    fail_msg: Installed release differs from the declared manager release. Review migration separately.
+
+- name: Read central package versions before changing security policy
+  ansible.builtin.package_facts:
+    manager: auto
+
+- name: Require complete matching manager, indexer and dashboard releases
+  ansible.builtin.assert:
+    that:
+      - item in ansible_facts.packages
+      - ansible_facts.packages[item][0].version == monitoring_wazuh_manager_version ~ '-1'
+    fail_msg: Partial or mismatched central installation needs separate reviewed recovery; automatic package changes are disabled.
+  loop: [wazuh-manager, wazuh-indexer, wazuh-dashboard]
+
+- name: Require live central service health before policy changes
+  ansible.builtin.command:
+    argv: [systemctl, is-active, '{{ item }}']
+  loop: [wazuh-manager, wazuh-indexer, wazuh-dashboard]
+  changed_when: false
+  check_mode: false
+
+- name: Stage and validate security policy before activation
+  ansible.builtin.include_tasks: policy.yml
+
+- name: Configure explicitly enabled private syslog receiver
+  ansible.builtin.include_tasks: syslog.yml
+  when: monitoring_wazuh_syslog_enabled is sameas true
+
+- name: Apply explicitly mapped group additions without removing existing memberships
+  ansible.builtin.include_tasks: groups.yml
+  when: monitoring_wazuh_group_assignments | length > 0
+
+- name: Apply explicitly approved alert-only retention
+  ansible.builtin.include_tasks: retention.yml
+  when: monitoring_wazuh_retention_approved is sameas true

@@ -32,6 +32,28 @@ def setup_case():
 
 
 class ConvergenceGuardTests(unittest.TestCase):
+    def shutdown_case(self):
+        c=setup_case();blocked=['clean_shutdown','clean_reboot','hard_shutdown','destroy']
+        c[0]['vms'][VM]['blocked_operations']=blocked
+        c[2]['vms'][VM]={'allow_graceful_shutdown':True}
+        ch=c[1]['resource_changes'][0]['change'];ch['actions']=['update'];ch['before']['blocked_operations']=copy.deepcopy(blocked)
+        ch['after']['blocked_operations']=['destroy','hard_shutdown'];self.sync(c)
+        return c
+    def test_explicit_graceful_shutdown_repair_preserves_forced_power_and_delete_protection(self):
+        self.assertEqual(self.verify(self.shutdown_case()),2)
+    def test_graceful_repair_refuses_removing_unrelated_protection(self):
+        c=self.shutdown_case();c[1]['resource_changes'][0]['change']['after']['blocked_operations'].remove('destroy');self.sync(c)
+        with self.assertRaises(ValueError):self.verify(c)
+    def test_graceful_repair_requires_explicit_policy(self):
+        c=self.shutdown_case();c[2]['vms'][VM]={}
+        with self.assertRaises(ValueError):self.verify(c)
+    def test_graceful_repair_refuses_unreviewed_baseline_protection_drift(self):
+        c=self.shutdown_case();c[1]['resource_changes'][0]['change']['before']['blocked_operations'].append('pause');self.sync(c)
+        with self.assertRaises(ValueError):self.verify(c)
+    def test_graceful_repair_rejects_nonboolean_policy(self):
+        c=self.shutdown_case();c[2]['vms'][VM]['allow_graceful_shutdown']='yes'
+        with self.assertRaises(ValueError):self.verify(c)
+
     def verify(self, case):
         file=ROOT/'convergence_guard.py'
         if not file.exists():self.fail('Convergence verification is not implemented')

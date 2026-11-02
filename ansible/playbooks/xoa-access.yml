@@ -1,0 +1,233 @@
+---
+- name: Maintain the explicitly configured XOA Tailscale endpoint
+  hosts: xoa_remote_access
+  gather_facts: false
+  any_errors_fatal: true
+  tasks:
+    - name: Require one explicitly declared guest and public key
+      ansible.builtin.assert:
+        that:
+          - ansible_play_hosts_all | length == 1
+          - xoa_expected_vm_uuid is defined
+          - xoa_expected_vm_uuid is match('^[0-9a-f-]{36}$')
+          - xoa_access_user is match('^[a-z_][a-z0-9_-]*$')
+          - xoa_access_user != 'root'
+          - "xoa_access_public_key is match('^ssh-ed25519 [A-Za-z0-9+/=]+(?: .*)?$')"
+    - name: Read the actual Xen guest identity
+      ansible.builtin.command: cat /sys/hypervisor/uuid
+      register: xoa_actual_uuid
+      changed_when: false
+    - name: Refuse to manage a different guest
+      ansible.builtin.assert:
+        that: xoa_actual_uuid.stdout | trim | lower == xoa_expected_vm_uuid | lower
+    - name: Validate optional reviewed XOA network declarations
+      when: xoa_network_files | default([]) | length > 0
+      ansible.builtin.assert:
+        that:
+          - xoa_network_files | map(attribute='dest') | list | sort == ['/etc/dhcp/dhclient.conf', '/etc/network/interfaces', '/etc/network/interfaces.d/enX1']
+          - xoa_network_gateway is match('^[0-9.]+$')
+          - xoa_network_interface is match('^[A-Za-z0-9_]+$')
+          - xoa_network_resolvers is sequence and xoa_network_resolvers is not string
+          - xoa_network_resolvers | length > 0
+      no_log: true
+    - name: Bootstrap the narrowly scoped automation identity and signed package source
+      when: xoa_access_bootstrap | default(false) | bool
+      block:
+        - name: Verify bootstrap is already authenticated as root
+          ansible.builtin.command: id -u
+          register: xoa_bootstrap_uid
+          changed_when: false
+          failed_when: xoa_bootstrap_uid.stdout | trim != '0'
+        - name: Require the supported Debian guest release
+          ansible.builtin.slurp:
+            src: /etc/os-release
+          register: xoa_os_release
+        - name: Refuse an unreviewed package platform
+          ansible.builtin.assert:
+            that: "'VERSION_CODENAME=bookworm' in (xoa_os_release.content | b64decode)"
+        - name: Ensure the dedicated account exists without privileged group membership
+          ansible.builtin.user:
+            name: "{{ xoa_access_user }}"
+            create_home: true
+            shell: /bin/bash
+        - name: Read the account groups
+          ansible.builtin.command:
+            argv: [id, -nG, "{{ xoa_access_user }}"]
+          register: xoa_access_groups
+          changed_when: false
+        - name: Refuse an account with broad preexisting administrative groups
+          ansible.builtin.assert:
+            that: xoa_access_groups.stdout.split() | intersect(['root', 'sudo', 'wheel']) | length == 0
+        - name: Create the account SSH directory
+          ansible.builtin.file:
+            path: "/home/{{ xoa_access_user }}/.ssh"
+            state: directory
+            owner: "{{ xoa_access_user }}"
+            group: "{{ xoa_access_user }}"
+            mode: '0700'
+        - name: Authorize the dedicated public key without forwarding
+          ansible.builtin.lineinfile:
+            path: "/home/{{ xoa_access_user }}/.ssh/authorized_keys"
+            line: "no-agent-forwarding,no-X11-forwarding,no-port-forwarding {{ xoa_access_public_key }}"
+            create: true
+            owner: "{{ xoa_access_user }}"
+            group: "{{ xoa_access_user }}"
+            mode: '0600'
+        - name: Install the official Tailscale repository verification key
+          ansible.builtin.get_url:
+            url: https://pkgs.tailscale.com/stable/debian/bookworm.noarmor.gpg
+            dest: /usr/share/keyrings/tailscale-archive-keyring.gpg
+            owner: root
+            group: root
+            mode: '0644'
+        - name: Declare only the signed stable Tailscale package source
+          ansible.builtin.copy:
+            dest: /etc/apt/sources.list.d/tailscale.list
+            content: |
+              # Tailscale packages for debian bookworm
+              deb [signed-by=/usr/share/keyrings/tailscale-archive-keyring.gpg] https://pkgs.tailscale.com/stable/debian bookworm main
+            owner: root
+            group: root
+            mode: '0644'
+        - name: Allow only the exact package and service repair commands
+          ansible.builtin.copy:
+            dest: /etc/sudoers.d/home-lab-xoa-tailscale
+            content: |
+              # Fixed Tailscale maintenance operations; no shell, arbitrary arguments or environment overrides.
+              {{ xoa_access_user }} ALL=(root) NOPASSWD: NOSETENV: /usr/bin/apt-get update, /usr/bin/apt-get install -y --no-install-recommends tailscale, /usr/bin/systemctl enable tailscaled.service, /usr/bin/systemctl start tailscaled.service
+            owner: root
+            group: root
+            mode: '0440'
+            validate: /usr/sbin/visudo -cf %s
+        - name: Restore the explicitly reviewed persistent guest network files
+          ansible.builtin.copy:
+            dest: "{{ item.dest }}"
+            content: "{{ item.content_b64 | b64decode }}"
+            owner: root
+            group: root
+            mode: '0644'
+            backup: true
+          loop: "{{ xoa_network_files | default([]) }}"
+          no_log: true
+          diff: false
+        - name: Read the current default route before network bootstrap
+          ansible.builtin.command: ip -4 route show default
+          register: xoa_bootstrap_route
+          changed_when: false
+          when: xoa_network_files | default([]) | length > 0
+          no_log: true
+        - name: Apply the reviewed default route when different
+          ansible.builtin.command:
+            argv: [ip, route, replace, default, via, "{{ xoa_network_gateway }}", dev, "{{ xoa_network_interface }}"]
+          when:
+            - xoa_network_files | default([]) | length > 0
+            - "('via ' ~ xoa_network_gateway ~ ' dev ' ~ xoa_network_interface) not in xoa_bootstrap_route.stdout"
+          changed_when: true
+          no_log: true
+        - name: Set reviewed runtime DNS during privileged network bootstrap
+          ansible.builtin.copy:
+            dest: /etc/resolv.conf
+            content: "{% for resolver in xoa_network_resolvers %}nameserver {{ resolver }}\n{% endfor %}"
+            owner: root
+            group: root
+            mode: '0644'
+            backup: true
+          when: xoa_network_files | default([]) | length > 0
+          no_log: true
+          diff: false
+    - name: Verify persistent network files against their private declaration
+      ansible.builtin.stat:
+        path: "{{ item.dest }}"
+        checksum_algorithm: sha256
+      loop: "{{ xoa_network_files | default([]) }}"
+      register: xoa_network_file_checks
+      no_log: true
+    - name: Require the reviewed network file contents
+      ansible.builtin.assert:
+        that:
+          - item.stat.isreg | default(false)
+          - item.stat.checksum == item.item.content_b64 | b64decode | hash('sha256')
+      loop: "{{ xoa_network_file_checks.results }}"
+      no_log: true
+    - name: Verify the declared runtime default route
+      ansible.builtin.command: ip -4 route show default
+      register: xoa_network_route
+      changed_when: false
+      when: xoa_network_files | default([]) | length > 0
+      no_log: true
+    - name: Require the reviewed route
+      ansible.builtin.assert:
+        that: "('via ' ~ xoa_network_gateway ~ ' dev ' ~ xoa_network_interface) in xoa_network_route.stdout"
+      when: xoa_network_files | default([]) | length > 0
+      no_log: true
+    - name: Read the runtime resolver configuration
+      ansible.builtin.slurp:
+        src: /etc/resolv.conf
+      register: xoa_resolver_file
+      when: xoa_network_files | default([]) | length > 0
+      no_log: true
+    - name: Require the reviewed resolvers
+      ansible.builtin.assert:
+        that: "xoa_network_resolvers | difference((xoa_resolver_file.content | b64decode).splitlines() | select('match', '^nameserver ') | map('regex_replace', '^nameserver +', '') | list) | length == 0"
+      when: xoa_network_files | default([]) | length > 0
+      no_log: true
+    - name: Inspect the installed Tailscale package
+      ansible.builtin.command: dpkg-query -W -f=${Status} tailscale
+      register: xoa_tailscale_package
+      changed_when: false
+      failed_when: false
+    - name: Refresh signed package metadata when Tailscale is missing
+      ansible.builtin.command: sudo -n /usr/bin/apt-get update
+      when:
+        - not (xoa_access_check_only | default(false) | bool)
+        - xoa_tailscale_package.rc != 0 or 'install ok installed' not in xoa_tailscale_package.stdout
+      changed_when: true
+    - name: Install the missing Tailscale package
+      ansible.builtin.command: sudo -n /usr/bin/apt-get install -y --no-install-recommends tailscale
+      when:
+        - not (xoa_access_check_only | default(false) | bool)
+        - xoa_tailscale_package.rc != 0 or 'install ok installed' not in xoa_tailscale_package.stdout
+      changed_when: true
+    - name: Inspect service startup configuration
+      ansible.builtin.command: systemctl is-enabled tailscaled.service
+      register: xoa_tailscale_enabled
+      changed_when: false
+      failed_when: false
+    - name: Enable Tailscale at boot when needed
+      ansible.builtin.command: sudo -n /usr/bin/systemctl enable tailscaled.service
+      when:
+        - not (xoa_access_check_only | default(false) | bool)
+        - xoa_tailscale_enabled.stdout | trim != 'enabled'
+      changed_when: true
+    - name: Inspect the running service
+      ansible.builtin.command: systemctl is-active tailscaled.service
+      register: xoa_tailscale_active
+      changed_when: false
+      failed_when: false
+    - name: Start Tailscale when stopped
+      ansible.builtin.command: sudo -n /usr/bin/systemctl start tailscaled.service
+      when:
+        - not (xoa_access_check_only | default(false) | bool)
+        - xoa_tailscale_active.stdout | trim != 'active'
+      changed_when: true
+    - name: Verify Tailscale is enabled
+      ansible.builtin.command: systemctl is-enabled tailscaled.service
+      register: xoa_final_enabled
+      changed_when: false
+      failed_when: xoa_final_enabled.stdout | trim != 'enabled'
+    - name: Verify Tailscale is active
+      ansible.builtin.command: systemctl is-active tailscaled.service
+      register: xoa_final_active
+      changed_when: false
+      failed_when: xoa_final_active.stdout | trim != 'active'
+    - name: Read current enrollment state privately
+      ansible.builtin.command: tailscale status --json
+      register: xoa_tailnet_status
+      changed_when: false
+      no_log: true
+    - name: Require a working enrolled endpoint
+      ansible.builtin.assert:
+        that: (xoa_tailnet_status.stdout | from_json).BackendState == 'Running'
+        fail_msg: >-
+          Package/service are present, but owner enrollment or connectivity recovery is required.
+          Enrollment secrets and the node identity are intentionally not generated from Terraform state.

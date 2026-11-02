@@ -1,0 +1,29 @@
+---
+- name: Require explicit retention authorization and private trusted indexer inputs
+  ansible.builtin.assert:
+    that:
+      - monitoring_wazuh_retention_approved is sameas true
+      - monitoring_wazuh_indexer_url is match('^https://')
+      - monitoring_wazuh_indexer_username | length > 0
+      - monitoring_wazuh_indexer_password | length > 0
+  no_log: true
+
+- name: Reconcile seven-day Wazuh alert retention from controller
+  ansible.builtin.command:
+    argv:
+      - '{{ ansible_playbook_python }}'
+      - '{{ role_path }}/../../../monitoring/wazuh/retention.py'
+    stdin: >-
+      {{ {'access_verified': monitoring_access_verified,
+          'deployment_approved': monitoring_deployment_approved,
+          'retention_approved': monitoring_wazuh_retention_approved,
+          'url': monitoring_wazuh_indexer_url,
+          'username': monitoring_wazuh_indexer_username,
+          'password': monitoring_wazuh_indexer_password,
+          'ca_file': monitoring_wazuh_indexer_ca_path} | to_json }}
+  delegate_to: localhost
+  become: false
+  register: monitoring_retention_result
+  changed_when: (monitoring_retention_result.stdout | from_json).changed
+  no_log: true
+  diff: false

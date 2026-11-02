@@ -1,0 +1,99 @@
+---
+- name: Detect existing Windows agent identity directory
+  ansible.windows.win_stat:
+    path: '{{ monitoring_wazuh_windows_path }}'
+  register: monitoring_windows_agent_directory
+
+- name: Install only absent explicitly approved Windows agents
+  ansible.builtin.include_tasks: windows-install.yml
+  when: not monitoring_windows_agent_directory.stat.exists
+
+- name: Verify installed Windows version, connection and retained enrollment
+  ansible.windows.win_powershell:
+    script: |
+      param([string]$Root, [string]$Version, [string]$Manager, [int]$Port, [string]$Group, [bool]$ResponseEditApproved)
+      $Ansible.Changed = $false
+      $installed = Get-ItemProperty 'HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\*' |
+        Where-Object { $_.DisplayName -match '^Wazuh Agent' }
+      if (@($installed).Count -ne 1 -or $installed.DisplayVersion -ne $Version) { throw 'Installed agent release differs; automatic upgrade refused' }
+      $xml = [xml]('<root>' + (Get-Content -Raw (Join-Path $Root 'ossec.conf')) + '</root>')
+      $matching = @($xml.SelectNodes('//client/server') | Where-Object {
+        $_.address -eq $Manager -and ((!$_.port -and $Port -eq 1514) -or [int]$_.port -eq $Port)
+      })
+      if ($matching.Count -eq 0) { throw 'Existing manager connection differs; review migration separately' }
+      if ($Group -eq 'homelab-lab' -and !$ResponseEditApproved -and $xml.SelectSingleNode('//active-response/disabled').InnerText -ne 'yes') {
+        throw 'Lab active response must already be disabled or explicitly approve scoped local change'
+      }
+    parameters:
+      Root: '{{ monitoring_wazuh_windows_path }}'
+      Version: '{{ monitoring_wazuh_agent_version }}'
+      Manager: '{{ monitoring_wazuh_manager_address }}'
+      Port: '{{ monitoring_wazuh_manager_port }}'
+      Group: '{{ monitoring_wazuh_agent_group }}'
+      ResponseEditApproved: '{{ monitoring_wazuh_disable_active_response_approved is sameas true or not monitoring_windows_agent_directory.stat.exists }}'
+  no_log: true
+
+- name: Disable Windows endpoint response with scoped policy edit and rollback
+  ansible.windows.win_powershell:
+    script: |
+      [CmdletBinding(SupportsShouldProcess)]
+      param([string]$Root)
+      $Ansible.Changed = $false
+      $path = Join-Path $Root 'ossec.conf'
+      $original = [IO.File]::ReadAllText($path)
+      $null = [xml]('<root>' + $original + '</root>')
+      $sections = [regex]::Matches($original, '(?s)<active-response\s*>.*?</active-response\s*>')
+      if ($sections.Count -gt 1) { throw 'Multiple active-response sections need manual review' }
+      if ($sections.Count -eq 1) {
+        $section = $sections[0]
+        $settings = [regex]::Matches($section.Value, '<disabled>\s*(.*?)\s*</disabled>')
+        if ($settings.Count -gt 1) { throw 'Multiple disabled values need manual review' }
+        if ($settings.Count -eq 1) {
+          if ($settings[0].Groups[1].Value -notin @('yes', 'no')) { throw 'Invalid response setting' }
+          $replacement = [regex]::Replace($section.Value, '(<disabled>\s*)(yes|no)(\s*</disabled>)', '${1}yes${3}')
+        } else {
+          $replacement = $section.Value.Replace('</active-response', '<disabled>yes</disabled></active-response')
+        }
+        $updated = $original.Substring(0, $section.Index) + $replacement + $original.Substring($section.Index + $section.Length)
+      } else {
+        $closing = $original.IndexOf('</ossec_config>')
+        if ($closing -lt 0) { throw 'No endpoint configuration section' }
+        $updated = $original.Insert($closing, '<active-response><disabled>yes</disabled></active-response>' + "`n")
+      }
+      $xml = [xml]('<root>' + $updated + '</root>')
+      $values = @($xml.SelectNodes('/root/ossec_config/active-response/disabled'))
+      if ($values.Count -ne 1 -or $values[0].InnerText.Trim() -ne 'yes') { throw 'Response disablement validation failed' }
+      if ($updated -ceq $original) { return }
+      $Ansible.Changed = $true
+      if ($Ansible.CheckMode) { return }
+      $backup = $path + '.homelab-response-backup-' + [DateTime]::UtcNow.ToString('yyyyMMddHHmmssffff')
+      Copy-Item -LiteralPath $path -Destination $backup
+      try {
+        [IO.File]::WriteAllText($path, $updated, [Text.UTF8Encoding]::new($false))
+        Restart-Service -Name WazuhSvc -ErrorAction Stop
+        (Get-Service WazuhSvc).WaitForStatus('Running', [TimeSpan]::FromSeconds(30))
+      } catch {
+        Copy-Item -LiteralPath $backup -Destination $path -Force
+        Restart-Service -Name WazuhSvc -ErrorAction Stop
+        throw 'Response activation failed; prior endpoint configuration restored'
+      }
+    parameters:
+      Root: '{{ monitoring_wazuh_windows_path }}'
+  no_log: true
+  diff: false
+  when: monitoring_wazuh_disable_active_response_approved is sameas true or not monitoring_windows_agent_directory.stat.exists
+
+- name: Start validated Windows agent
+  ansible.windows.win_service:
+    name: WazuhSvc
+    state: started
+    start_mode: auto
+
+- name: Wait for verified Windows enrollment without replacing identity
+  ansible.windows.win_stat:
+    path: '{{ monitoring_wazuh_windows_path }}\client.keys'
+  register: monitoring_windows_agent_key
+  until: monitoring_windows_agent_key.stat.exists and monitoring_windows_agent_key.stat.size | default(0) > 0
+  retries: 6
+  delay: 5
+  no_log: true

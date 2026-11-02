@@ -1,0 +1,14 @@
+---
+monitoring_access_verified: false
+monitoring_deployment_approved: false
+monitoring_opnsense_url: ''
+monitoring_opnsense_api_key: ''
+monitoring_opnsense_api_secret: ''
+monitoring_opnsense_ca_file: ''
+monitoring_opnsense_syslog_address: ''
+monitoring_opnsense_syslog_port: 514
+monitoring_opnsense_syslog_transport: tcp4
+monitoring_opnsense_syslog_certificate: ''
+monitoring_opnsense_syslog_vpn_verified: false
+monitoring_opnsense_syslog_tls_relay_verified: false
+monitoring_opnsense_syslog_tls_ca_sha256: ''

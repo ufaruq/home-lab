@@ -1,0 +1,30 @@
+[Unit]
+Description=Home lab Grafana Alloy collector
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=alloy
+Group=alloy
+ExecStart=/usr/bin/alloy run --storage.path=/var/lib/alloy --server.http.listen-addr=127.0.0.1:12345 --server.http.enable-pprof=false --server.http.disable-support-bundle=true --disable-reporting /etc/alloy/config.alloy
+Restart=on-failure
+RestartSec=10s
+UMask=0077
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+LockPersonality=true
+CapabilityBoundingSet=
+AmbientCapabilities=
+ReadWritePaths=/var/lib/alloy
+InaccessiblePaths=-/var/run/docker.sock -/run/docker.sock -/etc/shadow -/etc/gshadow
+
+[Install]
+WantedBy=multi-user.target

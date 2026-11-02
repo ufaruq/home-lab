@@ -1,0 +1,78 @@
+---
+# This is intentionally before setup, package, file, or service tasks.
+- name: Require explicit verified access and deployment approval
+  ansible.builtin.assert:
+    that:
+      - monitoring_access_verified is boolean
+      - monitoring_access_verified
+      - monitoring_deployment_approved is boolean
+      - monitoring_deployment_approved
+      - monitoring_grafana_zero_cost_mode_verified is boolean
+      - monitoring_grafana_zero_cost_mode_verified
+      - monitoring_alloy_install_approved is boolean
+    fail_msg: Alloy requires verified access, explicit deployment approval and verified $0 Grafana Free or unbilled Trial mode as YAML booleans.
+
+- name: Validate private Grafana endpoints and credential inputs
+  ansible.builtin.assert:
+    that:
+      - monitoring_grafana_metrics_url is string
+      - monitoring_grafana_logs_url is string
+      - monitoring_grafana_metrics_url is match('^https://[A-Za-z0-9][A-Za-z0-9.-]+(?::443)?/[^?#\s]*$')
+      - monitoring_grafana_logs_url is match('^https://[A-Za-z0-9][A-Za-z0-9.-]+(?::443)?/[^?#\s]*$')
+      - monitoring_grafana_metrics_url | urlsplit('username') == none
+      - monitoring_grafana_logs_url | urlsplit('username') == none
+      - monitoring_grafana_metrics_username is string
+      - monitoring_grafana_metrics_username is match('^[A-Za-z0-9_-]+$')
+      - monitoring_grafana_logs_username is string
+      - monitoring_grafana_logs_username is match('^[A-Za-z0-9_-]+$')
+      - monitoring_grafana_write_token is string
+      - monitoring_grafana_write_token is match('^[A-Za-z0-9_+./=-]{16,}$')
+    fail_msg: Supply private HTTPS Grafana write endpoints, usernames and a write token; URL credentials are forbidden.
+  no_log: true
+  diff: false
+
+- name: Validate labels, pinned release and collection bounds
+  ansible.builtin.assert:
+    that:
+      - inventory_hostname is match('^[A-Za-z0-9_.-]+$')
+      - monitoring_environment in ['homelab', 'lab']
+      - monitoring_role is string
+      - monitoring_role is match('^[A-Za-z0-9_-]+$')
+      - monitoring_alloy_version == '1.21.2'
+      - monitoring_alloy_release.version == monitoring_alloy_version
+      - monitoring_alloy_release.deb_amd64 == '80750b6740147ee6d9d860988989dd28bdb048ab0b27b7c02da7876ea5015dad'
+      - monitoring_alloy_release.deb_arm64 == 'cb6c1e655c09b48ec516628c2d85ee4aae5df5a46d10052bd9e75c2e3631c6fa'
+      - monitoring_alloy_release.windows_installer == '2fea06c9e597acab6f79470b1fb247165d13d6faf17b645c967526619974bdc6'
+      - monitoring_alloy_sample_limit is integer
+      - monitoring_alloy_sample_limit > 0
+      - monitoring_alloy_sample_limit <= 450
+      - monitoring_alloy_log_rate is number
+      - monitoring_alloy_log_rate > 0
+      - monitoring_alloy_log_rate <= 0.2
+      - monitoring_alloy_log_burst is integer
+      - monitoring_alloy_log_burst > 0
+      - monitoring_alloy_log_burst <= 10
+      - monitoring_alloy_linux_log_files is sequence and monitoring_alloy_linux_log_files is not string
+      - monitoring_alloy_linux_log_files | difference(['/var/log/dpkg.log', '/var/log/kern.log', '/var/log/nginx/error.log']) | length == 0
+      - monitoring_alloy_windows_event_channels is sequence and monitoring_alloy_windows_event_channels is not string
+      - monitoring_alloy_windows_event_channels | difference(['System', 'Application']) | length == 0
+      - monitoring_alloy_container_syslog_enabled is boolean
+      - monitoring_alloy_container_syslog_apps is sequence and monitoring_alloy_container_syslog_apps is not string and monitoring_alloy_container_syslog_apps is not mapping
+      - monitoring_alloy_container_syslog_apps | difference(['maps', 'openwebui', 'portainer']) | length == 0
+
+- name: Require a supported inventoried guest group
+  ansible.builtin.assert:
+    that:
+      - ('linux_guests' in group_names) != ('windows_guests' in group_names)
+      - "'appliance_guests' not in group_names"
+      - "'xen_hosts' not in group_names"
+      - not monitoring_alloy_container_syslog_enabled or ('linux_guests' in group_names and monitoring_alloy_container_syslog_apps | length > 0)
+    fail_msg: Alloy is restricted to declared Linux or Windows guests; never dom0 or appliances.
+
+- name: Configure Linux collector
+  ansible.builtin.include_tasks: linux.yml
+  when: "'linux_guests' in group_names"
+
+- name: Configure Windows collector
+  ansible.builtin.include_tasks: windows.yml
+  when: "'windows_guests' in group_names"

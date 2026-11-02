@@ -1,0 +1,37 @@
+---
+- name: Configure explicitly selected monitoring endpoints
+  hosts: linux_guests:windows_guests
+  gather_facts: false
+  serial: 1
+  any_errors_fatal: true
+  vars:
+    monitoring_environment: "{{ monitoring_host_policies[inventory_hostname].environment }}"
+    monitoring_role: "{{ monitoring_host_policies[inventory_hostname].role }}"
+    monitoring_wazuh_agent_group: "{{ 'homelab-lab' if monitoring_environment == 'lab' else ('homelab-windows' if monitoring_host_policies[inventory_hostname].platform == 'windows' else 'homelab-linux') }}"
+  pre_tasks:
+    - name: Apply exact-selection and access safeguards
+      ansible.builtin.import_tasks: monitoring-preflight.yml
+    - name: Gather minimum Linux facts only after reviewed access preflight
+      ansible.builtin.setup:
+        gather_subset: [min]
+      become: true
+      when: monitoring_host_policies[inventory_hostname].platform == 'linux'
+    - name: Gather minimum Windows facts only after reviewed access preflight
+      ansible.windows.setup:
+        gather_subset: [min]
+      when: monitoring_host_policies[inventory_hostname].platform == 'windows'
+  tasks:
+    - name: Configure Wazuh endpoint without modifying manager identity
+      ansible.builtin.include_role:
+        name: monitoring_wazuh_agent
+        apply:
+          become: "{{ monitoring_host_policies[inventory_hostname].platform == 'linux' }}"
+      when:
+        - "'wazuh-agent' in monitoring_host_policies[inventory_hostname].components"
+        - not (monitoring_trial_alloy_only | default(false))
+    - name: Configure the bounded Grafana collector
+      ansible.builtin.include_role:
+        name: monitoring_alloy
+        apply:
+          become: "{{ monitoring_host_policies[inventory_hostname].platform == 'linux' }}"
+      when: "'alloy' in monitoring_host_policies[inventory_hostname].components"

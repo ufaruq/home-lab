@@ -1,0 +1,6 @@
+tenancy_ocid         = "ocid1.tenancy.oc1..replace_me"
+identity_domain_ocid = "ocid1.domain.oc1..replace_me"
+operator_email       = "you@example.com"
+
+region      = "us-sanjose-1"
+oci_profile = "home-lab-bootstrap"

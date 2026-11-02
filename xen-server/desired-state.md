@@ -10,9 +10,29 @@ A policy has `schema_version: 1`, a `vms` map keyed by original logical VM ident
 | `memory_min`, `memory_max` | Positive byte counts with minimum not greater than maximum |
 | `power_state` | Explicit desired `Halted` or `Running` |
 | `auto_poweron` | Strict Boolean automatic-start policy |
+| `allow_graceful_shutdown` | Strict Boolean; when true, remove only `clean_shutdown` and `clean_reboot` blocks while preserving all other operation protections |
 | `recovery` | Operator-verified existing recovery-template identity and verification declaration |
 
 Automatic startup must agree with the desired Running state. An actual autostart toggle requires an explicit policy declaration. Starting a halted VM may attach its unchanged disks/NICs; this does not authorize changing their identities, sizes, order or networks.
+
+The private native boot policy declares the exact `automatic_vm_ids` set. With
+multiple automatic guests it also declares a separate `management_vm_id` in that
+set, so controller bootstrap starts only the management VM. The stock host boot
+service starts the approved automatic guests at host startup; `make up` restores
+declared Running states on demand. This does not install a continuous guest-restart
+watchdog. Planned maintenance must account for the declared power/autostart policy.
+
+`allow_graceful_shutdown` repairs a protection configuration that would prevent an
+orderly guest shutdown during host maintenance. The guard rejects removing forced
+shutdown, forced reboot, deletion, pause or other unrelated protections through
+this override. It also rejects unrelated protection drift. The field does not
+itself shut down or reboot a guest.
+
+An explicitly approved NIC relocation requires preserving its original private
+capture and recording the reviewed new network binding in the private hardware
+declaration. Ordinary convergence still rejects undeclared disk/NIC rewiring.
+Booting, guest network readiness, application health and data integrity must be
+verified separately; an autostart flag alone does not establish those properties.
 
 Omitted supported values preserve the reviewed observed baseline. Original logical identities remain stable after recovery, while private discovery binds them to current remote identities. Imports must use those current bindings.
 

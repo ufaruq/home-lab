@@ -1,0 +1,31 @@
+{
+  "all": {
+    "hosts": {
+      "oracle_wazuh": {
+        "ansible_host": "REPLACE_WITH_VERIFIED_ORACLE_TAILSCALE_ADDRESS",
+        "ansible_user": "ubuntu"
+      },
+      "wazuh": {
+        "ansible_host": "REPLACE_WITH_VERIFIED_WAZUH_ADDRESS",
+        "ansible_user": "REPLACE_WITH_VERIFIED_SSH_LOGIN"
+      },
+      "maps": {
+        "ansible_host": "REPLACE_WITH_VERIFIED_MAPS_ADDRESS",
+        "ansible_user": "REPLACE_WITH_VERIFIED_SSH_LOGIN",
+        "monitoring_wazuh_agent_version": "4.7.4"
+      },
+      "windows_10": {
+        "ansible_host": "REPLACE_WITH_VERIFIED_WINDOWS_ADDRESS",
+        "ansible_user": "REPLACE_WITH_VERIFIED_WINDOWS_LOGIN",
+        "ansible_connection": "winrm",
+        "ansible_port": 5986,
+        "ansible_winrm_scheme": "https",
+        "ansible_winrm_server_cert_validation": "validate",
+        "monitoring_wazuh_agent_version": "4.7.5"
+      },
+      "firewall": {
+        "monitoring_opnsense_url": "https://REPLACE_WITH_VERIFIED_OPNSENSE_HOSTNAME"
+      }
+    }
+  }
+}

@@ -1,0 +1,120 @@
+{
+  "uid": "homelab-security",
+  "title": "Home lab security logs",
+  "schemaVersion": 39,
+  "version": 1,
+  "editable": false,
+  "tags": [
+    "homelab",
+    "terraform"
+  ],
+  "timezone": "browser",
+  "refresh": "1m",
+  "time": {
+    "from": "now-6h",
+    "to": "now"
+  },
+  "panels": [
+    {
+      "id": 3,
+      "title": "Security export prerequisite",
+      "type": "text",
+      "gridPos": {
+        "x": 0,
+        "y": 0,
+        "w": 24,
+        "h": 4
+      },
+      "options": {
+        "mode": "markdown",
+        "content": "**Reserved optional view.** Current supported Alloy collectors intentionally reject Wazuh `alerts.json` and do not feed these panels. Keep this dashboard disabled until a separate security-log export has been implemented and reviewed for privacy, permissions, labels and Free-tier usage. Enabling this view does not configure collection or widen log access."
+      }
+    },
+    {
+      "id": 1,
+      "title": "Wazuh alerts",
+      "type": "logs",
+      "gridPos": {
+        "x": 0,
+        "y": 4,
+        "w": 12,
+        "h": 14
+      },
+      "datasource": {
+        "type": "loki",
+        "uid": "${loki_uid}"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "{job=\"homelab\",filename=\"/var/ossec/logs/alerts/alerts.json\"} | json",
+          "legendFormat": "{{host}}",
+          "datasource": {
+            "type": "loki",
+            "uid": "${loki_uid}"
+          },
+          "maxLines": 200
+        }
+      ],
+      "description": "Requires a separately implemented and reviewed security-log export. Current supported collectors intentionally reject Wazuh alerts.json; enabling this dashboard does not enable collection.",
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "min": 0
+        },
+        "overrides": []
+      },
+      "options": {
+        "showTime": true,
+        "showLabels": false,
+        "wrapLogMessage": true,
+        "sortOrder": "Descending",
+        "enableLogDetails": true
+      }
+    },
+    {
+      "id": 2,
+      "title": "Wazuh alerts per five minutes",
+      "type": "timeseries",
+      "gridPos": {
+        "x": 12,
+        "y": 4,
+        "w": 12,
+        "h": 14
+      },
+      "datasource": {
+        "type": "loki",
+        "uid": "${loki_uid}"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by(host) (count_over_time({job=\"homelab\",filename=\"/var/ossec/logs/alerts/alerts.json\"}[5m]))",
+          "legendFormat": "{{host}}",
+          "datasource": {
+            "type": "loki",
+            "uid": "${loki_uid}"
+          }
+        }
+      ],
+      "description": "Requires a separately implemented and reviewed security-log export. Current supported collectors intentionally reject Wazuh alerts.json; enabling this dashboard does not enable collection.",
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "min": 0
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "calcs": [
+            "lastNotNull"
+          ]
+        }
+      }
+    }
+  ],
+  "description": "Reserved optional view for a separately implemented, reviewed Wazuh security-log export. Current supported Alloy collectors reject alerts.json and do not feed this dashboard. Leave disabled until such an export exists; enabling this view grants no log access."
+}

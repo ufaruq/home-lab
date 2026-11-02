@@ -1,60 +1,31 @@
-# Xen configuration workflow
+# Home lab as code
 
-Terraform describes supported Xen Orchestra resources. Ansible handles selected guest configuration and narrowly scoped native host policies. A plan guard rejects destructive or unsupported changes before an apply.
+This repository records the XCP-ng fleet and its recovery evidence, manages
+declared VM/guest configuration, and contains a Terraform-driven monitoring stack.
+The absolute cloud budget is **$0**; read [AGENTS.md](AGENTS.md) before changing
+cloud resources or subscriptions.
 
-This public tree contains reusable code, documentation and invented test fixtures. It contains no deployment inventory, desired operating policy, credentials, host keys, recovery history or backup images. Supply those privately; an offline test does not establish that a real deployment or restore works.
+- **Monitoring setup, collectors, and redeployment:** [monitoring/README.md](monitoring/README.md)
+- **Primary monitoring Terraform root:** [infra/monitoring](infra/monitoring/README.md)
+- **Grafana resources:** [infra/grafana](infra/grafana/README.md)
+- **datacenter1 and VM resource dashboards, excluding Parrot:** [monitoring/xcp](monitoring/xcp/README.md), [Terraform root](infra/xcp-monitoring/README.md)
+- **Alloy Linux/Windows and application collectors:** [monitoring/alloy](monitoring/alloy/README.md)
+- **Wazuh adoption, agents, fresh deployment and retention:** [monitoring/wazuh](monitoring/wazuh/README.md)
+- **OPNsense encrypted-path syslog forwarding:** [monitoring/opnsense](monitoring/opnsense/README.md)
+- **Private access, network restrictions and DDoS limits:** [monitoring/network](monitoring/network/README.md)
+- **Xen inventory and recovery:** [xen-server](xen-server/README.md)
+- **Existing VM infrastructure:** [infra/xen/vms](infra/xen/vms/README.md)
+- **Existing guest convergence:** [ansible](ansible/README.md)
+- **Oracle access bootstrap:** [infra/oracle/bootstrap](infra/oracle/bootstrap/README.md)
+- **Selected Oracle Wazuh infrastructure and capacity checks:** [infra/oracle/wazuh](infra/oracle/wazuh/README.md)
 
-## Controller setup
+Monitoring deploys through Terraform. The selected Oracle Wazuh root prepares
+separate Always Free infrastructure, currently blocked by free ARM host capacity.
+The monitoring roots manage Grafana resources and invoke versioned Ansible roles.
+They do not upgrade subscriptions, boot existing guests or restore application data.
 
-Run tools on a separate controller, not the hypervisor control domain. Use a supported Python environment and the pinned dependencies:
-
-```sh
-python3.13 -m venv .local/controller
-. .local/controller/bin/activate
-python -m pip install -r ansible/requirements.txt
-export ANSIBLE_PLAYBOOK_BIN="$(command -v ansible-playbook)"
-make check
-```
-
-Tests use explicitly synthetic fixtures under `tests/fixtures/xen/`. They must never become a fallback for live discovery or apply.
-
-## Supply private inputs
-
-Keep connection credentials and pinned host keys in owner-only files outside the checkout. Keep local deployment inputs in ignored paths, or select private paths explicitly:
-
-- `XEN_CONNECTION_FILE`: private connection/authentication settings.
-- `XEN_INVENTORY_FILE`: reviewed XenAPI inventory; default `xen-server/inventory/local.json`.
-- `XEN_POLICY_FILE`: reviewed desired policy; default `xen-server/desired-state.json`.
-- `XEN_ANSIBLE_INVENTORY`: generated private Ansible inventory.
-- `XEN_HOST_VARS_FILE`: optional private control-host variables.
-
-The [workflow](xen-server/automation-workflow.md) explains connection settings and native policy requirements. Generate an example inventory without connecting to a server:
-
-```sh
-python ansible/files/generate_inventory.py \
-  --inventory tests/fixtures/xen/inventory.json \
-  --captures tests/fixtures/xen/guest-inventory \
-  --output .local/example-inventory
-```
-
-After supplying and reviewing real private inputs:
-
-```sh
-make readiness
-make plan
-# Review the exact guarded plan and intended guest selection before applying.
-make up
-```
-
-`make up` can change explicitly authorized settings and start a management appliance declared Running. It does not install the hypervisor, manufacture missing recovery images, format storage or restore arbitrary application data. Keep recoverable private state and backups before using it.
-
-## Documentation
-
-- [Scope and ownership](xen-server/README.md)
-- [Controller workflow](xen-server/automation-workflow.md) and [desired policy](xen-server/desired-state.md)
-- [Debugging](xen-server/debugging-runbook.md) and [backups](xen-server/backups.md)
-- [Terraform](infra/xen/vms/README.md) and [Ansible](ansible/README.md)
-- [Tool and scheduling choices](xen-server/automation-research.md)
-- [Reference guides](docs/README.md)
-
-Private inventory, captures, logs and investigation notes remain local in ignored paths. Do not stage them to make a command work. The repository's [zero cloud-cost requirement](AGENTS.md) applies throughout; these Xen workflows target existing local infrastructure.
+Start with `make monitoring-inventory` and the monitoring setup guide. Current
+defaults permit dashboards and selected Alloy collectors on Grafana's verified
+unbilled Trial; private write credentials and verified host access are required.
+Oracle/Wazuh and OPNsense still use their separate capacity/network prerequisites.
+The existing Xen commands remain separate and retain their own guards.

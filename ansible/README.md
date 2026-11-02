@@ -40,3 +40,9 @@ ansible-playbook -i .local/xen/ansible/hosts.yml \
 Syntax checks do not verify access or apply state. Guest audits require reviewed private access; their reports must stay private. An empty guest selection means no guest configuration was performed.
 
 Native [recovery](recovery/README.md), [logging](hardening/README.md) and [networking](networking/README.md) have separate private policies and check/apply gates. Do not treat guest evidence as authorization to mutate the control host.
+
+The optional [XOA remote-access workflow](../xen-server/remote-access.md) manages
+the guest Tailscale package/service through a dedicated identity and private
+inventory. `make xoa-up` converges it; configured deployments also run it after
+the existing `make up` workflow. Enrollment and privileged initial account setup
+remain explicit bootstrap operations rather than secrets in Terraform state.

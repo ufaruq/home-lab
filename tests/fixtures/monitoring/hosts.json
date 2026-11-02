@@ -1,0 +1,15 @@
+{
+  "all": {
+    "children": {
+      "xcp_control": {"hosts": {"datacenter1": {}}},
+      "fixture_guests": {
+        "hosts": {
+          "debian_server": {}, "maps": {}, "parrot_htb": {}, "popos": {},
+          "portainer": {}, "ubuntu_malware_lab": {}, "wazuh": {}, "xoa": {},
+          "windows_10": {}, "windows_11": {}, "firewall": {}, "truenas": {},
+          "deb_node_db": {}, "deb_node_slim": {}
+        }
+      }
+    }
+  }
+}
