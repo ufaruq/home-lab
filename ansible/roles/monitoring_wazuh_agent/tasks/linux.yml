@@ -24,6 +24,10 @@
       - ansible_facts.packages['wazuh-agent'][0].version == (monitoring_wazuh_agent_version ~ '-1' if ansible_facts.os_family == 'Debian' else monitoring_wazuh_agent_version)
       - ansible_facts.os_family != 'RedHat' or (ansible_facts.packages['wazuh-agent'][0].release | default('')) == '1'
 
+- name: Apply an explicitly reviewed retained-key address migration
+  ansible.builtin.include_tasks: linux-connection.yml
+  when: monitoring_wazuh_previous_manager_address | default('') | length > 0
+
 - name: Validate existing connection without altering local policy or enrollment
   ansible.builtin.command:
     argv:

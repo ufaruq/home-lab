@@ -1,0 +1,56 @@
+---
+- name: Adopt the existing local Wazuh manager and its storage policy
+  hosts: wazuh
+  gather_facts: true
+  become: true
+  any_errors_fatal: true
+  tags: [logging]
+  pre_tasks:
+    - name: Verify the expected guest identity before any mutation
+      ansible.builtin.import_tasks: wazuh-logging-identity.yml
+  tasks:
+    - name: Adopt manager policy without reinstalling or upgrading
+      ansible.builtin.include_role:
+        name: monitoring_wazuh_manager
+        apply:
+          tags: [logging]
+    - name: Configure bounded local log rotation and generated archive retention
+      ansible.builtin.include_role:
+        name: monitoring_wazuh_storage
+        apply:
+          tags: [logging]
+    - name: Reconcile alert-only index retention using existing local admin certificate
+      ansible.builtin.import_tasks: wazuh-logging-retention.yml
+
+- name: Connect only the explicitly selected guest agents
+  hosts: '{{ monitoring_wazuh_selected_agents | default([]) | join(",") }}'
+  gather_facts: true
+  become: true
+  serial: 1
+  any_errors_fatal: true
+  tags: [logging]
+  pre_tasks:
+    - name: Verify expected guest identity before any mutation
+      ansible.builtin.import_tasks: wazuh-logging-identity.yml
+  tasks:
+    - name: Adopt or explicitly install the compatible security agent
+      ansible.builtin.include_role:
+        name: monitoring_wazuh_agent
+        apply:
+          tags: [logging]
+
+- name: Configure private dashboard access on the existing manager
+  hosts: wazuh
+  gather_facts: true
+  become: true
+  any_errors_fatal: true
+  tags: [tailnet]
+  pre_tasks:
+    - name: Verify expected guest identity before any mutation
+      ansible.builtin.import_tasks: wazuh-logging-identity.yml
+  tasks:
+    - name: Install pinned Tailscale and configure private HTTPS
+      ansible.builtin.include_role:
+        name: monitoring_wazuh_tailnet
+        apply:
+          tags: [tailnet]

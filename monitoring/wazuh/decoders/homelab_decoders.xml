@@ -1,3 +1,4 @@
 <decoder name="homelab-monitoring">
+  <program_name>^homelab-monitoring$</program_name>
   <prematch>^HOMELAB_MONITORING_TEST: </prematch>
 </decoder>

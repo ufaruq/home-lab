@@ -1,0 +1,14 @@
+---
+monitoring_access_verified: false
+monitoring_deployment_approved: false
+monitoring_wazuh_tailnet_install_approved: false
+monitoring_wazuh_tailnet_dns_repair_approved: false
+monitoring_wazuh_tailnet_join_approved: false
+monitoring_wazuh_tailnet_dashboard_approved: false
+monitoring_wazuh_tailnet_free_plan_verified: false
+monitoring_wazuh_tailnet_auth_key_file: ''
+monitoring_wazuh_tailnet_dns_suffix: ''
+monitoring_wazuh_tailnet_hostname: homelab-wazuh
+monitoring_wazuh_tailnet_version: '1.104.4'
+monitoring_wazuh_tailnet_os_version: '24.04'
+monitoring_wazuh_tailnet_wazuh_version: '4.7.5-1'
