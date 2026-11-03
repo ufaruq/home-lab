@@ -51,7 +51,7 @@
         state: directory
         owner: root
         group: wazuh
-        mode: '0750'
+        mode: '0770'
       loop: [homelab-linux, homelab-windows, homelab-lab]
 
     - name: Install validated repository-owned files with private backups
@@ -70,6 +70,35 @@
         - {source: groups/homelab-windows/agent.conf, destination: shared/homelab-windows/agent.conf}
         - {source: groups/homelab-lab/agent.conf, destination: shared/homelab-lab/agent.conf}
       register: monitoring_policy_copies
+
+    - name: Inspect generated merge files in repository-owned groups
+      ansible.builtin.stat:
+        path: '/var/ossec/etc/shared/{{ item }}/merged.mg'
+        follow: false
+      loop: [homelab-linux, homelab-windows, homelab-lab]
+      register: monitoring_policy_merged
+      loop_control:
+        label: '{{ item }}'
+
+    - name: Refuse linked or nonregular generated group merge files
+      ansible.builtin.assert:
+        that:
+          - not (item.stat.islnk | default(false))
+          - not item.stat.exists or (item.stat.isreg | default(false))
+      loop: '{{ monitoring_policy_merged.results }}'
+      loop_control:
+        label: '{{ item.item }}'
+
+    - name: Keep generated group policy readable by the native manager account
+      ansible.builtin.file:
+        path: '/var/ossec/etc/shared/{{ item.item }}/merged.mg'
+        owner: wazuh
+        group: wazuh
+        mode: '0640'
+      loop: '{{ monitoring_policy_merged.results }}'
+      when: item.stat.exists
+      loop_control:
+        label: '{{ item.item }}'
 
     - name: Activate changed manager policy and verify service
       ansible.builtin.service:

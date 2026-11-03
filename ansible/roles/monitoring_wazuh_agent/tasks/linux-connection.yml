@@ -1,0 +1,79 @@
+---
+- name: Require explicit trusted-key migration intent
+  ansible.builtin.assert:
+    that:
+      - monitoring_wazuh_agent_connection_migration_approved | default(false) is sameas true
+      - monitoring_wazuh_expected_agent_id is match('^[0-9]{3,8}$')
+      - monitoring_wazuh_existing_key_sha256 is match('^[a-f0-9]{64}$')
+  no_log: true
+
+- name: Allocate private agent connection workspace
+  ansible.builtin.tempfile:
+    state: directory
+    path: /var/ossec/etc
+    prefix: .homelab-agent-connection-
+  register: monitoring_connection_stage
+
+- name: Migrate only the verified existing manager address
+  block:
+    - name: Stage scoped migration helper
+      ansible.builtin.copy:
+        src: '{{ role_path }}/../../../monitoring/wazuh/agent_connection.py'
+        dest: '{{ monitoring_connection_stage.path }}/connection.py'
+        owner: root
+        group: root
+        mode: '0600'
+    - name: Verify retained agent key and stage reviewed address
+      ansible.builtin.command:
+        argv: [python3, '{{ monitoring_connection_stage.path }}/connection.py']
+        stdin: "{{ {'migration_approved': monitoring_wazuh_agent_connection_migration_approved, 'agent_id': monitoring_wazuh_expected_agent_id, 'key_sha256': monitoring_wazuh_existing_key_sha256, 'previous': monitoring_wazuh_previous_manager_address, 'manager': monitoring_wazuh_manager_address, 'port': monitoring_wazuh_manager_port | int, 'output': monitoring_connection_stage.path + '/ossec.conf'} | to_json }}"
+      register: monitoring_connection_edit
+      changed_when: false
+      no_log: true
+    - name: Validate staged agent connection with installed binary
+      ansible.builtin.command:
+        argv: [/var/ossec/bin/wazuh-agentd, -t, -c, '{{ monitoring_connection_stage.path }}/ossec.conf']
+      changed_when: false
+    - name: Activate only the validated address with a private backup
+      ansible.builtin.copy:
+        src: '{{ monitoring_connection_stage.path }}/ossec.conf'
+        dest: /var/ossec/etc/ossec.conf
+        remote_src: true
+        owner: root
+        group: wazuh
+        mode: '0640'
+        backup: true
+      when: (monitoring_connection_edit.stdout | from_json).changed
+      register: monitoring_connection_copy
+      no_log: true
+      diff: false
+    - name: Restart changed agent connection
+      ansible.builtin.service:
+        name: wazuh-agent
+        state: restarted
+        enabled: true
+      when: monitoring_connection_copy.changed
+  rescue:
+    - name: Restore the saved connection after activation failure
+      ansible.builtin.copy:
+        src: '{{ monitoring_connection_copy.backup_file }}'
+        dest: /var/ossec/etc/ossec.conf
+        remote_src: true
+        owner: root
+        group: wazuh
+        mode: '0640'
+      when: monitoring_connection_copy.backup_file is defined
+      no_log: true
+    - name: Restart the restored agent only when a backup was restored
+      ansible.builtin.service:
+        name: wazuh-agent
+        state: restarted
+      when: monitoring_connection_copy.backup_file is defined
+    - name: Stop after a scoped connection migration failure
+      ansible.builtin.fail:
+        msg: Agent connection migration failed; review private logs and restored state before retrying.
+  always:
+    - name: Remove private connection staging files
+      ansible.builtin.file:
+        path: '{{ monitoring_connection_stage.path }}'
+        state: absent

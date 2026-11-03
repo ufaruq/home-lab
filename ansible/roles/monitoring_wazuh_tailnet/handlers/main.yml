@@ -1,0 +1,3 @@
+---
+# Restart and rollback deliberately run inline inside the activation transaction.
+[]

@@ -1,0 +1,81 @@
+---
+- name: Require reviewed DNS-only repair and the existing resolved service
+  ansible.builtin.assert:
+    that: monitoring_wazuh_tailnet_dns_repair_approved is sameas true
+- name: Require an existing active systemd resolver
+  ansible.builtin.command:
+    argv: [systemctl, is-active, systemd-resolved]
+  changed_when: false
+- name: Create standard resolver drop-in directory
+  ansible.builtin.file:
+    path: /etc/systemd/resolved.conf.d
+    state: directory
+    owner: root
+    group: root
+    mode: '0755'
+- name: Inspect repository-owned DNS drop-in without following links
+  ansible.builtin.stat:
+    path: /etc/systemd/resolved.conf.d/60-homelab-wazuh.conf
+    follow: false
+  register: monitoring_tailnet_dns_stat
+- name: Refuse a linked or nonregular DNS drop-in
+  ansible.builtin.assert:
+    that:
+      - not monitoring_tailnet_dns_stat.stat.exists or (monitoring_tailnet_dns_stat.stat.isreg and not monitoring_tailnet_dns_stat.stat.islnk)
+- name: Read prior DNS drop-in for transaction recovery
+  ansible.builtin.slurp:
+    src: /etc/systemd/resolved.conf.d/60-homelab-wazuh.conf
+  register: monitoring_tailnet_dns_before
+  when: monitoring_tailnet_dns_stat.stat.exists
+- name: Refuse takeover of unrelated resolver configuration
+  ansible.builtin.assert:
+    that: not monitoring_tailnet_dns_stat.stat.exists or (monitoring_tailnet_dns_before.content | b64decode).startswith('# Managed by home-lab Wazuh DNS repair\n')
+- name: Apply DNS-only repair with rollback
+  block:
+    - name: Use reviewed Cloudflare and Quad9 resolvers without modifying addresses or routes
+      ansible.builtin.copy:
+        dest: /etc/systemd/resolved.conf.d/60-homelab-wazuh.conf
+        owner: root
+        group: root
+        mode: '0644'
+        content: |
+          # Managed by home-lab Wazuh DNS repair
+          [Resolve]
+          DNS=1.1.1.1 9.9.9.9
+          Domains=~.
+      register: monitoring_tailnet_dns_write
+    - name: Restart only the local DNS resolver when changed
+      ansible.builtin.systemd:
+        name: systemd-resolved
+        state: restarted
+      when: monitoring_tailnet_dns_write.changed
+    - name: Verify public service names through the normal guest resolver
+      ansible.builtin.command:
+        argv: [getent, ahostsv4, '{{ item }}']
+      loop: [pkgs.tailscale.com, login.tailscale.com]
+      register: monitoring_tailnet_dns_query
+      until: monitoring_tailnet_dns_query.rc == 0
+      retries: 3
+      delay: 2
+      changed_when: false
+  rescue:
+    - name: Restore prior owned resolver configuration
+      ansible.builtin.copy:
+        content: '{{ monitoring_tailnet_dns_before.content | b64decode }}'
+        dest: /etc/systemd/resolved.conf.d/60-homelab-wazuh.conf
+        owner: root
+        group: root
+        mode: '{{ monitoring_tailnet_dns_stat.stat.mode }}'
+      when: monitoring_tailnet_dns_stat.stat.exists
+    - name: Remove only the newly created resolver drop-in on failure
+      ansible.builtin.file:
+        path: /etc/systemd/resolved.conf.d/60-homelab-wazuh.conf
+        state: absent
+      when: not monitoring_tailnet_dns_stat.stat.exists
+    - name: Restart the restored resolver
+      ansible.builtin.systemd:
+        name: systemd-resolved
+        state: restarted
+    - name: Stop after DNS verification failure
+      ansible.builtin.fail:
+        msg: DNS-only repair failed verification and was rolled back. Inspect upstream resolver/routing before retrying.

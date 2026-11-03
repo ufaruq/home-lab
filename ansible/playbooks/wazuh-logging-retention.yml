@@ -1,0 +1,28 @@
+---
+- name: Allocate a private local-certificate retention workspace
+  ansible.builtin.tempfile:
+    state: directory
+    path: /run
+    prefix: homelab-wazuh-retention-
+  register: monitoring_logging_retention_stage
+- name: Apply seven-day alert-only retention
+  block:
+    - name: Stage credential-free policy reconciler
+      ansible.builtin.copy:
+        src: '{{ playbook_dir }}/../../monitoring/wazuh/{{ item }}'
+        dest: '{{ monitoring_logging_retention_stage.path }}/{{ item }}'
+        owner: root
+        group: root
+        mode: '0600'
+      loop: [retention.py, retention.json, policy.py]
+    - name: Reconcile verified loopback indexer using existing certificate authentication
+      ansible.builtin.command:
+        argv: [python3, '{{ monitoring_logging_retention_stage.path }}/retention.py']
+        stdin: '{{ {"access_verified": true, "deployment_approved": true, "retention_approved": true, "local_admin_certificate": true, "url": "https://127.0.0.1:9200", "shard_bootstrap": monitoring_wazuh_shard_bootstrap | default(none), "shard_bootstrap_cleanup_approved": monitoring_wazuh_shard_bootstrap_cleanup_approved | default(false)} | to_json }}'
+      register: monitoring_logging_retention_result
+      changed_when: monitoring_logging_retention_result.rc == 0 and (monitoring_logging_retention_result.stdout | from_json).changed
+  always:
+    - name: Remove temporary retention workspace
+      ansible.builtin.file:
+        path: '{{ monitoring_logging_retention_stage.path }}'
+        state: absent

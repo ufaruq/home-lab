@@ -1,0 +1,453 @@
+---
+- name: Require explicit access, deployment and supported platform
+  ansible.builtin.assert:
+    that:
+      - monitoring_access_verified is sameas true
+      - monitoring_deployment_approved is sameas true
+      - ansible_distribution == 'Ubuntu'
+      - ansible_distribution_version == monitoring_wazuh_tailnet_os_version
+      - monitoring_wazuh_tailnet_os_version == '24.04'
+      - ansible_distribution_release == 'noble'
+      - ansible_architecture == 'x86_64'
+      - monitoring_wazuh_tailnet_version == '1.104.4'
+      - monitoring_wazuh_tailnet_wazuh_version == '4.7.5-1'
+      - not ansible_check_mode
+    fail_msg: This gated role supports the reviewed Ubuntu24.04 amd64 Wazuh4.7.5-1 manager and pinned Tailscale1.104.4; run offline checks before approved execution.
+
+- name: Inspect native package versions
+  ansible.builtin.package_facts:
+    manager: apt
+
+- name: Refuse automatic Wazuh migration or existing Tailscale upgrade
+  ansible.builtin.assert:
+    that:
+      - item in ansible_facts.packages
+      - ansible_facts.packages[item][0].version == monitoring_wazuh_tailnet_wazuh_version
+      - "'tailscale' not in ansible_facts.packages or ansible_facts.packages['tailscale'][0].version == monitoring_wazuh_tailnet_version"
+    fail_msg: Installed security components or Tailscale differ from reviewed versions; review migration separately.
+  loop: [wazuh-manager, wazuh-indexer, wazuh-dashboard]
+
+- name: Repair confirmed DHCP DNS failure only on the selected existing manager
+  ansible.builtin.include_tasks: dns.yml
+  when: monitoring_wazuh_tailnet_dns_repair_approved is sameas true
+
+- name: Install only the explicitly approved signed pinned Tailscale package
+  when: "'tailscale' not in ansible_facts.packages"
+  block:
+    - name: Require package installation approval
+      ansible.builtin.assert:
+        that: monitoring_wazuh_tailnet_install_approved is sameas true
+        fail_msg: Tailscale is absent; explicit package installation approval is required.
+
+    - name: Install verified official Noble repository signing key
+      ansible.builtin.get_url:
+        url: https://pkgs.tailscale.com/stable/ubuntu/noble.noarmor.gpg
+        dest: /usr/share/keyrings/tailscale-archive-keyring.gpg
+        checksum: sha256:3e03dacf222698c60b8e2f990b809ca1b3e104de127767864284e6c228f1fb39
+        owner: root
+        group: root
+        mode: '0644'
+
+    - name: Configure signed-by restricted official repository
+      ansible.builtin.copy:
+        dest: /etc/apt/sources.list.d/tailscale.list
+        content: "deb [arch=amd64 signed-by=/usr/share/keyrings/tailscale-archive-keyring.gpg] https://pkgs.tailscale.com/stable/ubuntu noble main\n"
+        owner: root
+        group: root
+        mode: '0644'
+
+    - name: Pin Tailscale against unattended version changes
+      ansible.builtin.copy:
+        dest: /etc/apt/preferences.d/homelab-tailscale
+        content: "Package: tailscale\nPin: version {{ monitoring_wazuh_tailnet_version }}\nPin-Priority: 1001\n"
+        owner: root
+        group: root
+        mode: '0644'
+
+    - name: Install exact authenticated repository release
+      ansible.builtin.apt:
+        name: 'tailscale={{ monitoring_wazuh_tailnet_version }}'
+        update_cache: true
+        install_recommends: false
+        allow_unauthenticated: false
+        state: present
+
+- name: Enable installed daemon without joining a tailnet
+  ansible.builtin.systemd:
+    name: tailscaled
+    enabled: true
+    state: started
+
+- name: Inspect package hold status
+  ansible.builtin.command:
+    argv: [apt-mark, showhold, tailscale]
+  register: monitoring_tailnet_hold
+  changed_when: false
+
+- name: Hold reviewed Tailscale version against unattended upgrades
+  ansible.builtin.command:
+    argv: [apt-mark, hold, tailscale]
+  when: "'tailscale' not in monitoring_tailnet_hold.stdout_lines"
+
+- name: Join or configure private access only with verified Free plan
+  when: monitoring_wazuh_tailnet_join_approved is sameas true or monitoring_wazuh_tailnet_dashboard_approved is sameas true
+  block:
+    - name: Require verified free eligibility and explicit private identity
+      ansible.builtin.assert:
+        that:
+          - monitoring_wazuh_tailnet_free_plan_verified is sameas true
+          - monitoring_wazuh_tailnet_hostname is match('^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$')
+          - monitoring_wazuh_tailnet_dns_suffix is match('^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+ts\.net$')
+          - (monitoring_wazuh_tailnet_hostname ~ '.' ~ monitoring_wazuh_tailnet_dns_suffix) | length <= 253
+        fail_msg: Verify the existing tailnet has no paid plan, trial dependence or capacity overage and supply its exact private MagicDNS identity.
+
+    - name: Read daemon state privately without exposing login URLs
+      ansible.builtin.command:
+        argv: [tailscale, status, --json]
+      register: monitoring_tailnet_initial
+      failed_when: monitoring_tailnet_initial.rc not in [0, 1]
+      changed_when: false
+      no_log: true
+
+    - name: Refuse reauthentication of stopped or other existing identities
+      ansible.builtin.assert:
+        that:
+          - (monitoring_tailnet_initial.stdout | from_json).BackendState in ['Running', 'NeedsLogin']
+          - (monitoring_tailnet_initial.stdout | from_json).BackendState == 'Running' or monitoring_wazuh_tailnet_join_approved is sameas true
+          - (monitoring_tailnet_initial.stdout | from_json).BackendState == 'Running' or not (((monitoring_tailnet_initial.stdout | from_json).get('Self') or {}).get('ID'))
+        fail_msg: Tailnet is not running; joining requires separate approval. Existing identities are never forcibly reset, logged out or reauthenticated.
+
+    - name: Join an unregistered node using a temporary owner-only key file
+      when: (monitoring_tailnet_initial.stdout | from_json).BackendState == 'NeedsLogin'
+      block:
+        - name: Require controller-only file path for fresh auth key
+          ansible.builtin.assert:
+            that:
+              - monitoring_wazuh_tailnet_auth_key_file is string
+              - monitoring_wazuh_tailnet_auth_key_file.startswith('/')
+            fail_msg: Supply an absolute controller path to a fresh single-use auth key in an owner-only file; never put the key in variables.
+          no_log: true
+
+        - name: Read controller effective user identity
+          ansible.builtin.command:
+            argv: [id, -u]
+          delegate_to: localhost
+          become: false
+          changed_when: false
+          register: monitoring_tailnet_controller_uid
+
+        - name: Verify private controller key metadata without reading content
+          ansible.builtin.stat:
+            path: '{{ monitoring_wazuh_tailnet_auth_key_file }}'
+            follow: false
+          delegate_to: localhost
+          become: false
+          register: monitoring_tailnet_auth_stat
+          no_log: true
+
+        - name: Require owner-only regular controller key
+          ansible.builtin.assert:
+            that:
+              - monitoring_tailnet_auth_stat.stat.exists
+              - monitoring_tailnet_auth_stat.stat.isreg
+              - not monitoring_tailnet_auth_stat.stat.islnk
+              - monitoring_tailnet_auth_stat.stat.uid == monitoring_tailnet_controller_uid.stdout | int
+              - monitoring_tailnet_auth_stat.stat.mode in ['0400', '0600']
+            fail_msg: Auth key must be a regular controller-owned file with mode0400 or0600.
+          no_log: true
+
+        - name: Allocate root-only ephemeral key path on manager
+          ansible.builtin.tempfile:
+            state: file
+            path: /run
+            prefix: homelab-tailscale-auth-
+          register: monitoring_tailnet_auth_temp
+          no_log: true
+
+        - name: Use key file and remove it even when enrollment fails
+          block:
+            - name: Copy fresh key directly from controller file
+              ansible.builtin.copy:
+                src: '{{ monitoring_wazuh_tailnet_auth_key_file }}'
+                dest: '{{ monitoring_tailnet_auth_temp.path }}'
+                owner: root
+                group: root
+                mode: '0600'
+              no_log: true
+
+            - name: Enroll without DNS routes SSH or exit-node advertisement
+              ansible.builtin.command:
+                argv:
+                  - tailscale
+                  - up
+                  - '--auth-key=file:{{ monitoring_tailnet_auth_temp.path }}'
+                  - '--hostname={{ monitoring_wazuh_tailnet_hostname }}'
+                  - --accept-dns=false
+                  - --accept-routes=false
+                  - --ssh=false
+                  - --timeout=45s
+              no_log: true
+          rescue:
+            - name: Report sanitized enrollment failure
+              ansible.builtin.fail:
+                msg: Tailnet enrollment failed. Check the fresh key and device approval privately in the Tailscale console; dashboard remains unchanged.
+          always:
+            - name: Remove temporary remote authentication key
+              ansible.builtin.file:
+                path: '{{ monitoring_tailnet_auth_temp.path }}'
+                state: absent
+              no_log: true
+
+    - name: Create private operational workspace
+      ansible.builtin.file:
+        path: /var/lib/homelab-wazuh-tailnet
+        state: directory
+        owner: root
+        group: root
+        mode: '0700'
+
+    - name: Deploy credential-free configuration safety helper
+      ansible.builtin.copy:
+        src: '{{ role_path }}/../../../monitoring/wazuh/dashboard_config.py'
+        dest: /var/lib/homelab-wazuh-tailnet/dashboard_config.py
+        owner: root
+        group: root
+        mode: '0700'
+
+    - name: Read current tailnet identity privately
+      ansible.builtin.command:
+        argv: [tailscale, status, --json]
+      register: monitoring_tailnet_status
+      changed_when: false
+      no_log: true
+
+    - name: Verify exact online MagicDNS hostname before touching dashboard
+      ansible.builtin.command:
+        argv:
+          - python3
+          - /var/lib/homelab-wazuh-tailnet/dashboard_config.py
+          - identity
+          - --suffix
+          - '{{ monitoring_wazuh_tailnet_dns_suffix }}'
+          - --hostname
+          - '{{ monitoring_wazuh_tailnet_hostname }}'
+        stdin: '{{ monitoring_tailnet_status.stdout }}'
+      changed_when: false
+      no_log: true
+
+    - name: Read network preferences privately
+      ansible.builtin.command:
+        argv: [tailscale, debug, prefs]
+      register: monitoring_tailnet_preferences
+      changed_when: false
+      no_log: true
+
+    - name: Refuse existing subnet router and exit-node configurations
+      ansible.builtin.command:
+        argv: [python3, /var/lib/homelab-wazuh-tailnet/dashboard_config.py, preferences]
+        stdin: '{{ monitoring_tailnet_preferences.stdout }}'
+      changed_when: false
+      no_log: true
+
+    - name: Disable DNS route and SSH acceptance without changing node identity
+      ansible.builtin.command:
+        argv: [tailscale, set, --accept-dns=false, --accept-routes=false, --ssh=false, --auto-update=false]
+      when: >-
+        (monitoring_tailnet_preferences.stdout | from_json).get('CorpDNS', false) or
+        (monitoring_tailnet_preferences.stdout | from_json).get('RouteAll', false) or
+        (monitoring_tailnet_preferences.stdout | from_json).get('RunSSH', false) or
+        ((monitoring_tailnet_preferences.stdout | from_json).get('AutoUpdate') or {}).get('Apply', false)
+      no_log: true
+
+    - name: Configure approved private dashboard after tailnet validation
+      when: monitoring_wazuh_tailnet_dashboard_approved is sameas true
+      block:
+        - name: Read existing Serve configuration privately
+          ansible.builtin.command:
+            argv: [tailscale, serve, status, --json]
+          register: monitoring_tailnet_serve_before
+          changed_when: false
+          no_log: true
+
+        - name: Refuse unrelated Serve listeners or public Funnel
+          ansible.builtin.command:
+            argv: [python3, /var/lib/homelab-wazuh-tailnet/dashboard_config.py, serve, --fqdn, '{{ monitoring_wazuh_tailnet_hostname }}.{{ monitoring_wazuh_tailnet_dns_suffix }}']
+            stdin: '{{ monitoring_tailnet_serve_before.stdout }}'
+          changed_when: false
+          no_log: true
+
+        - name: Require active original dashboard before staging
+          ansible.builtin.command:
+            argv: [systemctl, is-active, wazuh-dashboard]
+          changed_when: false
+
+        - name: Verify HTTPS certificate readiness before dashboard changes
+          block:
+            - name: Request private-tailnet trusted certificate without logging consent URLs
+              ansible.builtin.command:
+                argv:
+                  - timeout
+                  - '45'
+                  - tailscale
+                  - cert
+                  - --cert-file=/var/lib/homelab-wazuh-tailnet/readiness.crt
+                  - --key-file=/var/lib/homelab-wazuh-tailnet/readiness.key
+                  - '{{ monitoring_wazuh_tailnet_hostname }}.{{ monitoring_wazuh_tailnet_dns_suffix }}'
+              changed_when: false
+              no_log: true
+          rescue:
+            - name: Explain missing HTTPS approval safely
+              ansible.builtin.fail:
+                msg: Tailscale HTTPS is not ready. The tailnet owner must approve HTTPS certificates in the Tailscale admin DNS settings and any pending device approval, then rerun. Dashboard remains unchanged; no certificate bypass is permitted.
+          always:
+            - name: Remove temporary readiness certificate and private key
+              ansible.builtin.file:
+                path: '/var/lib/homelab-wazuh-tailnet/readiness.{{ item }}'
+                state: absent
+              loop: [crt, key]
+              no_log: true
+
+        - name: Read original config metadata without exposing content
+          ansible.builtin.stat:
+            path: /etc/wazuh-dashboard/opensearch_dashboards.yml
+            follow: false
+          register: monitoring_tailnet_dashboard_stat
+          no_log: true
+
+        - name: Require regular original dashboard configuration
+          ansible.builtin.assert:
+            that:
+              - monitoring_tailnet_dashboard_stat.stat.isreg
+              - not monitoring_tailnet_dashboard_stat.stat.islnk
+            fail_msg: Dashboard configuration must be a regular file.
+
+        - name: Preserve private original config once for manual recovery
+          ansible.builtin.copy:
+            src: /etc/wazuh-dashboard/opensearch_dashboards.yml
+            dest: /var/lib/homelab-wazuh-tailnet/original-dashboard.yml
+            remote_src: true
+            force: false
+            owner: root
+            group: root
+            mode: '0600'
+          no_log: true
+
+        - name: Snapshot current config for this transaction
+          ansible.builtin.copy:
+            src: /etc/wazuh-dashboard/opensearch_dashboards.yml
+            dest: /var/lib/homelab-wazuh-tailnet/previous-dashboard.yml
+            remote_src: true
+            owner: root
+            group: root
+            mode: '0600'
+          no_log: true
+
+        - name: Render narrowly scoped loopback configuration
+          ansible.builtin.command:
+            argv: [python3, /var/lib/homelab-wazuh-tailnet/dashboard_config.py, render, --source, /etc/wazuh-dashboard/opensearch_dashboards.yml, --destination, /var/lib/homelab-wazuh-tailnet/staged-dashboard.yml]
+          changed_when: false
+          no_log: true
+
+        - name: Validate staged YAML using native dashboard parser and preserve all unrelated values
+          ansible.builtin.command:
+            argv:
+              - /usr/share/wazuh-dashboard/node/bin/node
+              - -e
+              - |
+                const fs = require('fs'), yaml = require('/usr/share/wazuh-dashboard/node_modules/js-yaml');
+                const load = text => yaml.load(text, {schema: yaml.DEFAULT_SAFE_SCHEMA || yaml.DEFAULT_SCHEMA});
+                const before = load(fs.readFileSync(process.argv[1], 'utf8'));
+                const after = load(fs.readFileSync(process.argv[2], 'utf8'));
+                const owned = {'server.host':'127.0.0.1', 'server.port':5601, 'server.ssl.enabled':false, 'opensearch_security.cookie.secure':true};
+                for (const [key, value] of Object.entries(owned)) {
+                  if (after[key] !== value) process.exit(1);
+                  delete before[key]; delete after[key];
+                }
+                if (!require('util').isDeepStrictEqual(before, after)) process.exit(1);
+              - /etc/wazuh-dashboard/opensearch_dashboards.yml
+              - /var/lib/homelab-wazuh-tailnet/staged-dashboard.yml
+          changed_when: false
+          no_log: true
+
+        - name: Activate private endpoint with rollback on any failed check
+          block:
+            - name: Activate staged config while preserving service-readable ownership
+              ansible.builtin.copy:
+                src: /var/lib/homelab-wazuh-tailnet/staged-dashboard.yml
+                dest: /etc/wazuh-dashboard/opensearch_dashboards.yml
+                remote_src: true
+                owner: '{{ monitoring_tailnet_dashboard_stat.stat.uid }}'
+                group: '{{ monitoring_tailnet_dashboard_stat.stat.gid }}'
+                mode: '{{ monitoring_tailnet_dashboard_stat.stat.mode }}'
+              register: monitoring_tailnet_dashboard_activate
+              no_log: true
+
+            - name: Restart dashboard only when settings changed
+              ansible.builtin.systemd:
+                name: wazuh-dashboard
+                state: restarted
+              when: monitoring_tailnet_dashboard_activate.changed
+
+            - name: Wait for healthy loopback dashboard
+              ansible.builtin.uri:
+                url: http://127.0.0.1:5601/
+                status_code: [200, 302, 401]
+                return_content: false
+                use_proxy: false
+              register: monitoring_tailnet_local_health
+              until: monitoring_tailnet_local_health.status | default(0) in [200, 302, 401]
+              retries: 24
+              delay: 5
+              no_log: true
+
+            - name: Enable background private HTTPS proxy only when no managed listener exists
+              ansible.builtin.command:
+                argv: [timeout, '45', tailscale, serve, --bg, --https=443, http://127.0.0.1:5601]
+              when: (monitoring_tailnet_serve_before.stdout | from_json) in [none, {}]
+              no_log: true
+
+            - name: Verify final Serve configuration
+              ansible.builtin.command:
+                argv: [tailscale, serve, status, --json]
+              register: monitoring_tailnet_serve_after
+              changed_when: false
+              no_log: true
+
+            - name: Validate only private HTTPS443 to loopback HTTP5601 is served
+              ansible.builtin.command:
+                argv: [python3, /var/lib/homelab-wazuh-tailnet/dashboard_config.py, serve, --fqdn, '{{ monitoring_wazuh_tailnet_hostname }}.{{ monitoring_wazuh_tailnet_dns_suffix }}']
+                stdin: '{{ monitoring_tailnet_serve_after.stdout }}'
+              changed_when: false
+              no_log: true
+
+            - name: Require active final proxy rather than an empty configuration
+              ansible.builtin.assert:
+                that: (monitoring_tailnet_serve_after.stdout | from_json).TCP['443'].HTTPS is sameas true
+                fail_msg: Private HTTPS proxy is absent.
+
+          rescue:
+            - name: Remove only newly attempted managed HTTPS proxy
+              ansible.builtin.command:
+                argv: [tailscale, serve, --https=443, 'off']
+              when: (monitoring_tailnet_serve_before.stdout | from_json) in [none, {}]
+              failed_when: false
+              no_log: true
+
+            - name: Restore previous dashboard configuration
+              ansible.builtin.copy:
+                src: /var/lib/homelab-wazuh-tailnet/previous-dashboard.yml
+                dest: /etc/wazuh-dashboard/opensearch_dashboards.yml
+                remote_src: true
+                owner: '{{ monitoring_tailnet_dashboard_stat.stat.uid }}'
+                group: '{{ monitoring_tailnet_dashboard_stat.stat.gid }}'
+                mode: '{{ monitoring_tailnet_dashboard_stat.stat.mode }}'
+              no_log: true
+
+            - name: Restart restored dashboard
+              ansible.builtin.systemd:
+                name: wazuh-dashboard
+                state: restarted
+
+            - name: Report failed private activation and restored configuration
+              ansible.builtin.fail:
+                msg: Private dashboard activation failed; prior dashboard configuration was restored. Inspect local service health and tailnet HTTPS approval privately before retrying.

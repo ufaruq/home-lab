@@ -94,7 +94,7 @@
         "alloy"
       ],
       "status": "planned",
-      "note": "Captured local manager retained for recovery; central deployment targets oracle_wazuh."
+      "note": "Existing local manager is selected for security logs and private dashboard access through infra/wazuh-logging. Oracle remains an optional separately guarded future migration."
     },
     "xoa": {
       "platform": "linux",
