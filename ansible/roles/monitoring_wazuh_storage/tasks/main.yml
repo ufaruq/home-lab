@@ -1,0 +1,277 @@
+---
+- name: Require verified access and explicit storage deployment intent
+  ansible.builtin.assert:
+    that:
+      - monitoring_access_verified is sameas true
+      - monitoring_deployment_approved is sameas true
+      - monitoring_wazuh_storage_cleanup_approved is boolean
+    fail_msg: Storage deployment requires verified access and actual boolean approvals.
+
+- name: Configure existing Wazuh storage as root
+  become: true
+  block:
+    - name: Verify effective root identity
+      ansible.builtin.command:
+        argv: [id, -u]
+      register: monitoring_storage_uid
+      changed_when: false
+      check_mode: false
+
+    - name: Read platform and installed package context
+      ansible.builtin.setup:
+        gather_subset: [distribution]
+
+    - name: Read installed central package versions
+      ansible.builtin.package_facts:
+        manager: auto
+
+    - name: Require the reviewed Ubuntu 24.04 Wazuh 4.7.5 installation
+      ansible.builtin.assert:
+        that:
+          - monitoring_storage_uid.stdout == '0'
+          - ansible_facts.distribution == 'Ubuntu'
+          - ansible_facts.distribution_version == '24.04'
+          - item in ansible_facts.packages
+          - ansible_facts.packages[item][0].version == '4.7.5-1'
+        fail_msg: Storage policy is reviewed only for the existing Ubuntu 24.04 central Wazuh 4.7.5-1 installation.
+      loop: [wazuh-manager, wazuh-indexer, wazuh-dashboard]
+
+    - name: Verify central services are healthy before changing local storage
+      ansible.builtin.command:
+        argv: [systemctl, is-active, '{{ item }}']
+      loop: [wazuh-manager, wazuh-indexer, wazuh-dashboard]
+      changed_when: false
+      check_mode: false
+
+    - name: Inspect exact storage paths without following links
+      ansible.builtin.stat:
+        path: '{{ item }}'
+        follow: false
+      loop:
+        - /var
+        - /var/ossec
+        - /var/ossec/logs
+        - /var/ossec/logs/alerts
+        - /var/ossec/etc
+        - /var/ossec/etc/local_internal_options.conf
+        - /var/ossec/etc/local_internal_options.conf.pre-home-lab-storage
+        - /usr/local
+        - /usr/local/sbin
+        - /usr/local/sbin/home-lab-wazuh-storage.py
+        - /etc/systemd/system
+        - /etc/systemd/system/home-lab-wazuh-storage.service
+        - /etc/systemd/system/home-lab-wazuh-storage.timer
+      register: monitoring_storage_paths
+      no_log: true
+
+    - name: Reject linked paths or missing required Wazuh storage directories
+      ansible.builtin.assert:
+        that:
+          - not (item.stat.islnk | default(false))
+          - not item.stat.exists or (item.stat.isdir | default(false)) or (item.stat.isreg | default(false))
+          - item.item not in ['/var/ossec', '/var/ossec/etc', '/var/ossec/logs', '/var/ossec/logs/alerts'] or (item.stat.isdir | default(false))
+        fail_msg: Refusing an unexpected or linked storage policy path.
+      loop: '{{ monitoring_storage_paths.results }}'
+      no_log: true
+
+    - name: Read existing local overrides privately
+      ansible.builtin.slurp:
+        src: /var/ossec/etc/local_internal_options.conf
+      register: monitoring_storage_original
+      when: monitoring_storage_paths.results[5].stat.exists
+      no_log: true
+      diff: false
+
+    - name: Render only the reviewed rotation settings privately on the controller
+      ansible.builtin.command:
+        argv:
+          - '{{ ansible_playbook_python }}'
+          - '{{ role_path }}/../../../monitoring/wazuh/storage.py'
+          - render
+        stdin: '{{ monitoring_storage_original.content | default("") | b64decode }}'
+        stdin_add_newline: false
+        strip_empty_ends: false
+      delegate_to: localhost
+      become: false
+      check_mode: false
+      changed_when: false
+      register: monitoring_storage_rendered
+      no_log: true
+      diff: false
+
+    - name: Keep one root-only original backup before the first configuration write
+      ansible.builtin.copy:
+        src: /var/ossec/etc/local_internal_options.conf
+        dest: /var/ossec/etc/local_internal_options.conf.pre-home-lab-storage
+        remote_src: true
+        force: false
+        owner: root
+        group: root
+        mode: '0600'
+      when:
+        - monitoring_storage_paths.results[5].stat.exists
+        - monitoring_storage_rendered.stdout != (monitoring_storage_original.content | default('') | b64decode)
+      no_log: true
+      diff: false
+
+    - name: Activate rotation settings with transactional rollback
+      block:
+        - name: Write local rotation overrides preserving original file ownership and permissions
+          ansible.builtin.copy:
+            content: '{{ monitoring_storage_rendered.stdout }}'
+            dest: /var/ossec/etc/local_internal_options.conf
+            owner: '{{ monitoring_storage_paths.results[5].stat.uid | default(0) }}'
+            group: '{{ monitoring_storage_paths.results[5].stat.gid | default(0) }}'
+            mode: '{{ monitoring_storage_paths.results[5].stat.mode | default("0640") }}'
+          register: monitoring_storage_config
+          no_log: true
+          diff: false
+
+        - name: Validate monitor configuration before activating new rotation settings
+          ansible.builtin.command:
+            argv: [/var/ossec/bin/wazuh-monitord, -t]
+          changed_when: false
+          when: monitoring_storage_config.changed and not ansible_check_mode
+          no_log: true
+
+        - name: Activate changed rotation settings
+          ansible.builtin.systemd_service:
+            name: wazuh-manager
+            state: restarted
+          when: monitoring_storage_config.changed and not ansible_check_mode
+
+        - name: Verify manager health after activation
+          ansible.builtin.command:
+            argv: [systemctl, is-active, wazuh-manager]
+          changed_when: false
+          check_mode: false
+
+      rescue:
+        - name: Restore the original local options after failed validation or restart
+          ansible.builtin.copy:
+            content: '{{ monitoring_storage_original.content | b64decode }}'
+            dest: /var/ossec/etc/local_internal_options.conf
+            owner: '{{ monitoring_storage_paths.results[5].stat.uid }}'
+            group: '{{ monitoring_storage_paths.results[5].stat.gid }}'
+            mode: '{{ monitoring_storage_paths.results[5].stat.mode }}'
+          when: monitoring_storage_paths.results[5].stat.exists and monitoring_storage_config.changed | default(false)
+          no_log: true
+          diff: false
+        - name: Remove only newly created local options on failed activation
+          ansible.builtin.file:
+            path: /var/ossec/etc/local_internal_options.conf
+            state: absent
+          when: not monitoring_storage_paths.results[5].stat.exists and monitoring_storage_config.changed | default(false)
+        - name: Restart the restored manager
+          ansible.builtin.systemd_service:
+            name: wazuh-manager
+            state: restarted
+          when: monitoring_storage_config.changed | default(false) and not ansible_check_mode
+        - name: Stop after rotation activation failure
+          ansible.builtin.fail:
+            msg: Storage rotation activation failed; prior local options were restored when changed. Inspect manager health before retrying.
+
+    - name: Install root-only local cleanup helper without additional packages
+      ansible.builtin.copy:
+        src: '{{ role_path }}/../../../monitoring/wazuh/storage.py'
+        dest: /usr/local/sbin/home-lab-wazuh-storage.py
+        owner: root
+        group: root
+        mode: '0700'
+
+    - name: Plan conservative dated alert cleanup before any deletion
+      ansible.builtin.command:
+        argv: [/usr/bin/python3, /usr/local/sbin/home-lab-wazuh-storage.py, cleanup]
+      register: monitoring_wazuh_storage_plan
+      changed_when: false
+      when: not ansible_check_mode
+      no_log: true
+
+    - name: Apply exactly the inspected candidates only with explicit deletion approval
+      ansible.builtin.command:
+        argv: [/usr/bin/python3, /usr/local/sbin/home-lab-wazuh-storage.py, cleanup, --apply-reviewed-plan]
+        stdin: >-
+          {{ {'apply_approved': monitoring_wazuh_storage_cleanup_approved,
+              'plan': (monitoring_wazuh_storage_plan.stdout | from_json).plan} | to_json }}
+      register: monitoring_storage_cleanup
+      changed_when: (monitoring_storage_cleanup.stdout | from_json).changed
+      when: monitoring_wazuh_storage_cleanup_approved is sameas true and not ansible_check_mode
+      no_log: true
+      diff: false
+
+    - name: Install approved daily root cleanup service
+      ansible.builtin.copy:
+        dest: /etc/systemd/system/home-lab-wazuh-storage.service
+        owner: root
+        group: root
+        mode: '0644'
+        content: |
+          [Unit]
+          Description=Conservative Wazuh dated compressed alert cleanup
+          After=wazuh-manager.service
+          [Service]
+          Type=oneshot
+          User=root
+          Group=root
+          UMask=0077
+          ExecStart=/usr/bin/python3 /usr/local/sbin/home-lab-wazuh-storage.py cleanup --daily-approved
+          StandardInput=data
+          StandardInputText={"apply_approved":true}
+          StandardOutput=null
+          NoNewPrivileges=true
+          ProtectSystem=strict
+          ProtectHome=true
+          PrivateTmp=true
+          ReadWritePaths=/var/ossec/logs/alerts
+      register: monitoring_storage_service_unit
+      when: monitoring_wazuh_storage_cleanup_approved is sameas true
+
+    - name: Install approved once-daily cleanup timer
+      ansible.builtin.copy:
+        dest: /etc/systemd/system/home-lab-wazuh-storage.timer
+        owner: root
+        group: root
+        mode: '0644'
+        content: |
+          [Unit]
+          Description=Daily Wazuh dated compressed alert cleanup
+          [Timer]
+          OnCalendar=*-*-* 03:35:00
+          Persistent=true
+          Unit=home-lab-wazuh-storage.service
+          [Install]
+          WantedBy=timers.target
+      register: monitoring_storage_timer_unit
+      when: monitoring_wazuh_storage_cleanup_approved is sameas true
+
+    - name: Enable the approved daily timer
+      ansible.builtin.systemd_service:
+        name: home-lab-wazuh-storage.timer
+        enabled: true
+        state: started
+        daemon_reload: '{{ monitoring_storage_service_unit.changed or monitoring_storage_timer_unit.changed }}'
+      when: monitoring_wazuh_storage_cleanup_approved is sameas true and not ansible_check_mode
+
+    - name: Disable previously installed deletion timer when approval is absent
+      ansible.builtin.systemd_service:
+        name: home-lab-wazuh-storage.timer
+        enabled: false
+        state: stopped
+      when:
+        - monitoring_wazuh_storage_cleanup_approved is sameas false
+        - monitoring_storage_paths.results[12].stat.exists
+
+    - name: Remove scheduled deletion units when approval is absent
+      ansible.builtin.file:
+        path: '{{ item }}'
+        state: absent
+      loop:
+        - /etc/systemd/system/home-lab-wazuh-storage.timer
+        - /etc/systemd/system/home-lab-wazuh-storage.service
+      when: monitoring_wazuh_storage_cleanup_approved is sameas false
+      register: monitoring_storage_removed_units
+
+    - name: Reload systemd after removing deletion units
+      ansible.builtin.systemd_service:
+        daemon_reload: true
+      when: monitoring_storage_removed_units.changed and not ansible_check_mode

@@ -1,0 +1,6 @@
+---
+monitoring_access_verified: false
+monitoring_deployment_approved: false
+# Enables irreversible deletion now and daily. False still installs rotation and
+# returns a cleanup plan, but does not schedule or perform archive deletion.
+monitoring_wazuh_storage_cleanup_approved: false

@@ -1,10 +1,18 @@
 # Local Wazuh configuration
 
-**Placement update:** the owner selected Oracle for the new central server. Use
-the [Oracle deployment guide](../../infra/oracle/wazuh/README.md) and explicit
-`oracle_wazuh` target. The captured local 4.7.5 manager remains recovery evidence;
-the adoption instructions below describe role behavior, not the current manager
-deployment target. No cloud server or agent migration has been deployed.
+**Current placement:** the owner selected the existing local Wazuh VM for log
+collection and private dashboard access. Use the local-only
+[Terraform deployment guide](../../infra/wazuh-logging/README.md), including
+collector setup, verified retained-key address migration, seven-day storage
+retention and Tailscale access. Parrot is excluded from this deployment.
+The [Oracle guide](../../infra/oracle/wazuh/README.md) remains an optional future
+path subject to the repository's absolute $0 safeguards; it is not needed for
+the existing local manager.
+TrueNAS uses its [agentless native TLS syslog integration](../truenas/README.md)
+through the local root's separate `truenas` phase. Its logs are collected by
+manager agent ID `000`, retaining the appliance source hostname/program; no
+separate TrueNAS Wazuh agent is enrolled. Configure and verify delivery using
+that guide before treating appliance logging as operational.
 
 These roles manage the existing local Wazuh VM and explicitly selected endpoints. They create no cloud resources. The captured manager/indexer/dashboard versions are **4.7.5**; captured agents include **4.7.4** and **4.7.5**. Offline package evidence does not establish live health. Preserve this installation through `monitoring_wazuh_mode: adopt` (default). An upgrade is a separate backup, compatibility and migration review.
 

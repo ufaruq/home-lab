@@ -1,7 +1,10 @@
 # Monitoring deployment and collector setup
 
 This is the start-to-finish guide for the repository's monitoring stack. The
-deployment entry point for guests/Wazuh is **Terraform in `infra/monitoring`**.
+general collector deployment entry point is **Terraform in `infra/monitoring`**.
+The selected existing local Wazuh manager and Linux agent deployment use
+[**Terraform in `infra/wazuh-logging`**](../infra/wazuh-logging/README.md); its
+explicit `truenas` phase configures [native TLS syslog](truenas/README.md).
 The XCP-ng hypervisor and its selected VMs (excluding Parrot) have a dedicated [agentless resource workflow](xcp/README.md)
 through **Terraform in `infra/xcp-monitoring`**. Terraform
 manages Grafana resources directly and runs the versioned Ansible roles to
@@ -22,20 +25,22 @@ paid plugins, new Grafana stacks, or paid backends are provisioned here.
 | Docker application log forwarding definition | Versioned Compose logging overlay; explicitly deployed with the application's stack | [Alloy application logs](alloy/README.md), [overlay](alloy/examples/compose.logging.yaml) |
 | Wazuh manager policy, agent groups, custom rules and retention | Terraform-invoked Wazuh roles | [Wazuh setup](wazuh/README.md) |
 | Linux/Windows Wazuh agents and retained enrollment identities | Terraform-invoked agent role | [Wazuh agents](wazuh/README.md) |
+| TrueNAS native TLS forwarding and isolated Wazuh receiver | Local Terraform root invoking Ansible and restricted native API | [TrueNAS setup/rebuild](truenas/README.md) |
 | OPNsense's dedicated remote logging destination | Terraform-invoked native HTTPS API helper | [OPNsense setup](opnsense/README.md) |
 
-The owner selected an **Oracle-hosted Wazuh server** to separate security records
-from the monitored hypervisor. Start with the [Oracle Wazuh guide](../infra/oracle/wazuh/README.md).
-The root is prepared but free ARM host capacity was unavailable at the last check.
-No Oracle workload has been created by it. The captured local manager is retained
-for recovery and is no longer the selected manager deployment target.
+The owner selected the **existing local Wazuh 4.7.5 manager**. Use the
+[local deployment guide](../infra/wazuh-logging/README.md) for adoption, retained
+agent identities, seven-day retention and private dashboard access. The
+[Oracle Wazuh root](../infra/oracle/wazuh/README.md) is an optional future path;
+it remains unprovisioned and is not a prerequisite for local logging.
 
 The fleet map is [fleet.json](fleet.json). It includes the existing 14 guest
 definitions, `datacenter1`, and the explicit external `oracle_wazuh` target from
 [inventory/oracle.yml](inventory/oracle.yml). Planned does not mean reachable, running, or
 approved for deployment. The two diskless definitions are blocked. TrueNAS and
 the hypervisor remain agentless. datacenter1 uses the dedicated XOA host-metrics
-workflow above; TrueNAS/native appliance interfaces still need verification.
+workflow above; the owned TrueNAS appliance has a version-pinned native TLS
+syslog workflow. Its configuration and actual delivery must be verified separately.
 The code never installs an agent in dom0 or boots a guest.
 
 The application overlay does not restore application data or reconstruct private
@@ -194,17 +199,13 @@ sets; otherwise a deliberately halted lab VM will produce an outage alert.
 
 ## 6. Set up collectors and Wazuh
 
-First establish `oracle_wazuh` through the [Oracle root](../infra/oracle/wazuh/README.md),
-verified private access and a deliberate 4.7.x-to-4.14.9 agent migration. Then use
-one Linux pilot, followed by Windows and OPNsense. Keep deployment selections small.
+Use the selected [existing local Wazuh deployment](../infra/wazuh-logging/README.md)
+with verified private access. Start with one Linux pilot and keep selections small.
 
-- **Wazuh manager:** the selected `oracle_wazuh` target uses explicitly approved
-  fresh 4.14.9 ARM installation. Use its separate private manager example, reviewed
-  checksum and small-ARM approval. Do not reuse the old adoption variables for this
-  new server. The local 4.7.5 installation and identities remain intact. The generic
-  role still defaults to adoption; the Oracle inventory explicitly selects fresh
-  without inventing authorization. The [Wazuh guide](wazuh/README.md) covers backups
-  and historical adoption behavior.
+- **Wazuh manager:** adopt the existing local 4.7.5 installation without reinstall
+  or automatic upgrade. Preserve its identities and compatible agent versions.
+  The optional Oracle 4.14.9 fresh-install path needs its own $0 capacity,
+  eligibility, backup and agent-migration review; it is not selected here.
 - **Linux collector:** set the verified manager address and the host's exact
   installed agent version in private inputs. Maps was captured with 4.7.4, while
   some other endpoints had 4.7.5. Do not apply one guessed version to every host.
@@ -223,10 +224,15 @@ one Linux pilot, followed by Windows and OPNsense. Keep deployment selections sm
   TLS forwarding requires an actual pre-existing TLS syslog relay and its trust
   configuration. A private LAN address alone is not encryption. See
   [OPNsense setup](opnsense/README.md).
-- **TrueNAS/extra devices:** keep native syslog/SNMP/exporter configuration scoped
-  to the actual appliance version. They are not ordinary Linux agent targets.
-  Verify capabilities and declare their collection configuration before adding
-  them to a rollout. Dom0 is always agentless.
+- **TrueNAS:** use the [owned 24.04.2.5 native TLS integration](truenas/README.md)
+  and explicit local `truenas` phase. It configures an isolated mutual TLS receiver
+  and native forwarding without an agent. Collected events belong to manager
+  agent ID `000`, with the appliance source hostname/program in the log; TrueNAS
+  does not appear as a separately enrolled Wazuh agent. Delivery remains a live
+  verification step.
+- **Extra devices:** keep native syslog/SNMP/exporter configuration scoped to the
+  actual model/version. They are not ordinary Linux agent targets. Dom0 remains
+  agentless.
 
 New Wazuh enrollment needs CA-verified TLS. Adopted `client.keys` and certificate
 files are preserved; that preservation does not prove their historical trust
@@ -342,10 +348,11 @@ configures neither a VPN nor firewall/NAT rules.
   verification bypasses. These are safeguards, not proof that an uninspected
   machine or pre-existing network is secure.
 
-The dashboards are live, but no host telemetry is arriving yet. The remaining
-collector inputs are the Grafana Cloud write token and verified private host
-addresses/logins. Wazuh remains dependent on an available $0 Oracle host and its
-private access. OPNsense forwarding still needs a private VPN path or TLS relay.
+Dashboard publication does not establish current host telemetry. Verify each
+selected collector and ingestion path with the checks above. Local Wazuh uses
+its existing manager and private deployment inputs; it has no Oracle capacity
+dependency. TrueNAS forwarding has a separate bootstrap, saved plan and delivery
+check. OPNsense still needs a verified private VPN path or TLS relay.
 
 Official references: [Grafana billing/trial FAQ](https://grafana.com/docs/grafana-cloud/platform/cost-management-and-billing/manage-invoices/understand-your-invoice/),
 [Grafana Free limits](https://grafana.com/pricing/),

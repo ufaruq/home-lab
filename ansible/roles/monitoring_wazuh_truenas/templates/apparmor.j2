@@ -1,0 +1,9 @@
+# Owned TrueNAS receiver paths, included by the enforced vendor rsyslogd profile.
+/etc/homelab-truenas/rsyslog.conf r,
+/etc/homelab-truenas/ca.pem r,
+/etc/homelab-truenas/server.pem r,
+/etc/homelab-truenas/server.key r,
+owner /run/homelab-truenas/ rw,
+owner /run/homelab-truenas/rsyslog.pid{,.tmp} rwk,
+owner /var/lib/homelab-truenas/ rw,
+owner /var/lib/homelab-truenas/* rwk,

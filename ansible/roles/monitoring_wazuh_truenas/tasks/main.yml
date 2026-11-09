@@ -1,0 +1,414 @@
+---
+- name: Require exact approval booleans and supported retained manager
+  ansible.builtin.assert:
+    that:
+      - monitoring_access_verified is sameas true
+      - monitoring_deployment_approved is sameas true
+      - ansible_distribution == 'Ubuntu'
+      - ansible_distribution_version == '24.04'
+      - ansible_architecture == 'x86_64'
+
+- name: Validate private literal addresses before rendering
+  ansible.builtin.script:
+    cmd: 'validate_inputs.py {{ monitoring_truenas_receiver_address | quote }} {{ monitoring_truenas_source_address | quote }}'
+    executable: python3
+  changed_when: false
+  check_mode: false
+
+- name: Inspect controller credential sources without displaying contents
+  ansible.builtin.stat:
+    path: '{{ item }}'
+    follow: false
+  delegate_to: localhost
+  become: false
+  loop:
+    - '{{ monitoring_truenas_ca_file }}'
+    - '{{ monitoring_truenas_server_cert_file }}'
+    - '{{ monitoring_truenas_server_key_file }}'
+  register: truenas_sources
+  no_log: true
+
+- name: Require private regular controller files
+  ansible.builtin.assert:
+    that:
+      - item.stat.exists
+      - item.stat.isreg | default(false)
+      - not item.stat.islnk | default(false)
+      - item.stat.mode == '0600'
+      - item.stat.size > 0
+  loop: '{{ truenas_sources.results }}'
+  no_log: true
+
+- name: Read retained packages
+  ansible.builtin.package_facts:
+    manager: apt
+
+- name: Require complete exact retained Wazuh installation and base logging tools
+  ansible.builtin.assert:
+    that:
+      - item in ansible_facts.packages
+      - ansible_facts.packages[item][0].version == '4.7.5-1'
+  loop: [wazuh-manager, wazuh-indexer, wazuh-dashboard]
+
+- name: Require installed base tools and approval for missing GnuTLS plugin
+  ansible.builtin.assert:
+    that:
+      - "'rsyslog' in ansible_facts.packages"
+      - "'logrotate' in ansible_facts.packages"
+      - "'rsyslog-gnutls' in ansible_facts.packages or monitoring_truenas_receiver_install_approved is sameas true"
+    fail_msg: Base rsyslog and logrotate must exist; missing signed rsyslog-gnutls installation needs explicit approval.
+
+- name: Install missing TLS plugin through existing signed Ubuntu apt sources only
+  ansible.builtin.apt:
+    name: "rsyslog-gnutls={{ ansible_facts.packages['rsyslog'][0].version }}"
+    state: present
+    allow_unauthenticated: false
+    allow_downgrade: false
+    fail_on_autoremove: true
+  when: "'rsyslog-gnutls' not in ansible_facts.packages and monitoring_truenas_receiver_install_approved is sameas true"
+
+- name: Require live manager and default rsyslog health before changing owned policy
+  ansible.builtin.command:
+    argv: [systemctl, is-active, '{{ item }}']
+  loop: [wazuh-manager, rsyslog]
+  changed_when: false
+  check_mode: false
+
+- name: Refuse ambiguous or unowned localfile configuration before making changes
+  ansible.builtin.script:
+    cmd: validate_wazuh.py /var/ossec/etc/ossec.conf
+    executable: python3
+  changed_when: false
+  check_mode: false
+  no_log: true
+
+- name: Inspect retained rsyslog AppArmor profile and include directory
+  ansible.builtin.stat:
+    path: '{{ item }}'
+    follow: false
+  loop:
+    - /etc/apparmor.d/usr.sbin.rsyslogd
+    - /etc/apparmor.d/rsyslog.d
+  register: truenas_apparmor_paths
+
+- name: Require known regular vendor profile and root-owned include directory
+  ansible.builtin.assert:
+    that:
+      - truenas_apparmor_paths.results[0].stat.isreg | default(false)
+      - not (truenas_apparmor_paths.results[0].stat.islnk | default(false))
+      - truenas_apparmor_paths.results[0].stat.uid == 0
+      - truenas_apparmor_paths.results[1].stat.isdir | default(false)
+      - not (truenas_apparmor_paths.results[1].stat.islnk | default(false))
+      - truenas_apparmor_paths.results[1].stat.uid == 0
+      - truenas_apparmor_paths.results[1].stat.mode == '0755'
+    fail_msg: Expected retained vendor rsyslog AppArmor profile and snippet include directory.
+
+- name: Read vendor profile without changing it
+  ansible.builtin.slurp:
+    src: /etc/apparmor.d/usr.sbin.rsyslogd
+  register: truenas_apparmor_vendor
+
+- name: Require the reviewed native rsyslog snippet include
+  ansible.builtin.assert:
+    that:
+      - "(truenas_apparmor_vendor.content | b64decode) is search('(?m)^\\s*include if exists <rsyslog\\.d>\\s*$')"
+    fail_msg: Unknown vendor AppArmor include; no profile replacement or bypass is permitted.
+
+- name: Inspect loaded AppArmor enforcement before changing receiver policy
+  ansible.builtin.command:
+    argv: [cat, /sys/kernel/security/apparmor/profiles]
+  register: truenas_apparmor_loaded
+  changed_when: false
+  check_mode: false
+  no_log: true
+
+- name: Require the existing rsyslog profile to remain enforced
+  ansible.builtin.assert:
+    that:
+      - "'rsyslogd (enforce)' in truenas_apparmor_loaded.stdout_lines"
+    fail_msg: Retained rsyslog AppArmor enforcement is required; no automatic disabling or complain mode.
+
+- name: Create isolated least privilege receiver account
+  ansible.builtin.user:
+    name: homelab-syslog
+    system: true
+    create_home: false
+    home: /nonexistent
+    shell: /usr/sbin/nologin
+    groups: ''
+    append: false
+
+- name: Create owned private directories
+  ansible.builtin.file:
+    path: '{{ item.path }}'
+    state: directory
+    owner: '{{ item.owner }}'
+    group: '{{ item.group }}'
+    mode: '{{ item.mode }}'
+  loop:
+    - {path: /etc/homelab-truenas, owner: root, group: homelab-syslog, mode: '0750'}
+    - {path: /var/lib/homelab-truenas, owner: homelab-syslog, group: homelab-syslog, mode: '0700'}
+    - {path: /var/log/homelab-truenas, owner: homelab-syslog, group: wazuh, mode: '2750'}
+
+- name: Precreate current log without changing existing contents or timestamps
+  ansible.builtin.file:
+    path: /var/log/homelab-truenas/events.log
+    state: touch
+    owner: homelab-syslog
+    group: wazuh
+    mode: '0640'
+    modification_time: preserve
+    access_time: preserve
+
+- name: Declare exact owned transaction file set
+  ansible.builtin.set_fact:
+    truenas_snapshot_cleanup_safe: false
+    truenas_owned_files:
+      - /etc/apparmor.d/rsyslog.d/homelab-truenas
+      - /etc/homelab-truenas/ca.pem
+      - /etc/homelab-truenas/server.pem
+      - /etc/homelab-truenas/server.key
+      - /etc/homelab-truenas/rsyslog.conf
+      - /etc/homelab-truenas/logrotate.conf
+      - /etc/systemd/system/homelab-truenas-receiver.service
+      - /etc/systemd/system/homelab-truenas-rotate.service
+      - /etc/systemd/system/homelab-truenas-rotate.timer
+
+- name: Record prior service state
+  ansible.builtin.command:
+    argv: [systemctl, show, '{{ item }}', --property=LoadState, --property=UnitFileState, --property=ActiveState]
+  loop: [homelab-truenas-receiver.service, homelab-truenas-rotate.timer]
+  register: truenas_prior_units
+  changed_when: false
+
+- name: Snapshot owned files privately
+  ansible.builtin.tempfile:
+    state: directory
+    prefix: homelab-truenas-rollback-
+  register: truenas_backup
+
+- name: Inspect prior owned files
+  ansible.builtin.stat:
+    path: '{{ item }}'
+    follow: false
+  loop: '{{ truenas_owned_files }}'
+  register: truenas_previous
+
+- name: Refuse symlink or nonregular owned config paths
+  ansible.builtin.assert:
+    that:
+      - not item.stat.exists or (item.stat.isreg and not item.stat.islnk)
+  loop: '{{ truenas_previous.results }}'
+
+- name: Save only prior owned files with private backup permissions
+  ansible.builtin.copy:
+    src: '{{ item.item }}'
+    dest: '{{ truenas_backup.path }}/{{ item.item | basename }}'
+    remote_src: true
+    mode: '0600'
+  loop: '{{ truenas_previous.results }}'
+  when: item.stat.exists
+  no_log: true
+
+- name: Activate owned TLS receiver and Wazuh localfile with rollback
+  block:
+    - name: Copy reviewed certificates without logging key material
+      ansible.builtin.copy:
+        src: '{{ item.src }}'
+        dest: '/etc/homelab-truenas/{{ item.dest }}'
+        owner: homelab-syslog
+        group: homelab-syslog
+        mode: '0600'
+      loop:
+        - {src: '{{ monitoring_truenas_ca_file }}', dest: ca.pem}
+        - {src: '{{ monitoring_truenas_server_cert_file }}', dest: server.pem}
+        - {src: '{{ monitoring_truenas_server_key_file }}', dest: server.key}
+      register: truenas_certificates
+      no_log: true
+      diff: false
+
+    - name: Render only isolated receiver and rotation declarations
+      ansible.builtin.template:
+        src: '{{ item.src }}'
+        dest: '{{ item.dest }}'
+        owner: root
+        group: homelab-syslog
+        mode: '0640'
+      loop:
+        - {src: rsyslog.conf.j2, dest: /etc/homelab-truenas/rsyslog.conf}
+        - {src: logrotate.j2, dest: /etc/homelab-truenas/logrotate.conf}
+        - {src: receiver.service.j2, dest: /etc/systemd/system/homelab-truenas-receiver.service}
+        - {src: rotate.service.j2, dest: /etc/systemd/system/homelab-truenas-rotate.service}
+        - {src: rotate.timer.j2, dest: /etc/systemd/system/homelab-truenas-rotate.timer}
+      register: truenas_declarations
+
+    - name: Render only the owned AppArmor extension through the vendor include
+      ansible.builtin.template:
+        src: apparmor.j2
+        dest: /etc/apparmor.d/rsyslog.d/homelab-truenas
+        owner: root
+        group: root
+        mode: '0644'
+      register: truenas_apparmor_snippet
+
+    - name: Compile retained AppArmor profile without loading or caching it
+      ansible.builtin.command:
+        argv: [/sbin/apparmor_parser, --skip-kernel-load, --skip-cache, /etc/apparmor.d/usr.sbin.rsyslogd]
+      changed_when: false
+
+    - name: Reload enforced rsyslog AppArmor policy before native validation
+      ansible.builtin.command:
+        argv: [/sbin/apparmor_parser, --replace, --skip-cache, /etc/apparmor.d/usr.sbin.rsyslogd]
+      when: truenas_apparmor_snippet.changed
+
+    - name: Inspect retained AppArmor enforcement after reload
+      ansible.builtin.command:
+        argv: [cat, /sys/kernel/security/apparmor/profiles]
+      register: truenas_apparmor_reloaded
+      changed_when: false
+      no_log: true
+
+    - name: Verify reloaded rsyslog profile is enforced
+      ansible.builtin.assert:
+        that:
+          - "'rsyslogd (enforce)' in truenas_apparmor_reloaded.stdout_lines"
+
+    - name: Validate isolated rsyslog configuration as actual receiver identity
+      ansible.builtin.command:
+        argv: [/usr/sbin/rsyslogd, -N1, -f, /etc/homelab-truenas/rsyslog.conf]
+      become: true
+      become_user: homelab-syslog
+      changed_when: false
+
+    - name: Validate owned rotation without rotating logs
+      ansible.builtin.command:
+        argv: [/usr/sbin/logrotate, --debug, /etc/homelab-truenas/logrotate.conf]
+      changed_when: false
+
+    - name: Add only marked localfile preserving unrelated Wazuh policy
+      ansible.builtin.blockinfile:
+        path: /var/ossec/etc/ossec.conf
+        marker: '<!-- {mark} homelab-truenas-localfile -->'
+        insertbefore: '^</ossec_config>'
+        backup: true
+        validate: '/var/ossec/bin/wazuh-logcollector -t -c %s'
+        block: |
+          <localfile>
+            <log_format>syslog</log_format>
+            <location>/var/log/homelab-truenas/events.log</location>
+          </localfile>
+      register: truenas_wazuh_config
+      diff: false
+      no_log: true
+
+    - name: Activate isolated receiver after successful validation
+      ansible.builtin.systemd_service:
+        name: homelab-truenas-receiver.service
+        daemon_reload: true
+        enabled: true
+        state: "{{ 'restarted' if (truenas_certificates.changed or truenas_declarations.changed) else 'started' }}"
+
+    - name: Enable independent native rotation timer
+      ansible.builtin.systemd_service:
+        name: homelab-truenas-rotate.timer
+        enabled: true
+        state: started
+
+    - name: Restart Wazuh only for changed validated localfile
+      ansible.builtin.systemd_service:
+        name: wazuh-manager
+        state: restarted
+      when: truenas_wazuh_config.changed
+
+    - name: Verify affected services active
+      ansible.builtin.command:
+        argv: [systemctl, is-active, '{{ item }}']
+      loop: [homelab-truenas-receiver.service, homelab-truenas-rotate.timer, wazuh-manager, rsyslog]
+      changed_when: false
+
+    - name: Mark successful activation snapshot disposable
+      ansible.builtin.set_fact:
+        truenas_snapshot_cleanup_safe: true
+  rescue:
+    - name: Stop owned receiver before restoring its TLS files
+      ansible.builtin.systemd_service:
+        name: '{{ item }}'
+        state: stopped
+        enabled: false
+      loop: [homelab-truenas-receiver.service, homelab-truenas-rotate.timer]
+      failed_when: false
+
+    - name: Restore prior owned files and original permissions
+      ansible.builtin.copy:
+        src: '{{ truenas_backup.path }}/{{ item.item | basename }}'
+        dest: '{{ item.item }}'
+        remote_src: true
+        owner: '{{ item.stat.uid }}'
+        group: '{{ item.stat.gid }}'
+        mode: '{{ item.stat.mode }}'
+      loop: '{{ truenas_previous.results }}'
+      when: item.stat.exists
+      no_log: true
+
+    - name: Remove only newly introduced owned configuration
+      ansible.builtin.file:
+        path: '{{ item.item }}'
+        state: absent
+      loop: '{{ truenas_previous.results }}'
+      when: not item.stat.exists
+
+    - name: Reload prior enforced AppArmor policy after restoring its owned snippet
+      ansible.builtin.command:
+        argv: [/sbin/apparmor_parser, --replace, --skip-cache, /etc/apparmor.d/usr.sbin.rsyslogd]
+
+    - name: Inspect restored AppArmor enforcement
+      ansible.builtin.command:
+        argv: [cat, /sys/kernel/security/apparmor/profiles]
+      register: truenas_apparmor_restored
+      changed_when: false
+      no_log: true
+
+    - name: Verify restored rsyslog profile remains enforced
+      ansible.builtin.assert:
+        that:
+          - "'rsyslogd (enforce)' in truenas_apparmor_restored.stdout_lines"
+
+    - name: Restore previous Wazuh configuration if replaced
+      ansible.builtin.copy:
+        src: '{{ truenas_wazuh_config.backup_file }}'
+        dest: /var/ossec/etc/ossec.conf
+        remote_src: true
+        owner: root
+        group: wazuh
+        mode: '0640'
+      when: truenas_wazuh_config.backup_file is defined
+      no_log: true
+      diff: false
+
+    - name: Reload restored units
+      ansible.builtin.systemd_service:
+        daemon_reload: true
+
+    - name: Restore prior owned service state only when previously installed
+      ansible.builtin.systemd_service:
+        name: '{{ item.item }}'
+        enabled: "{{ 'UnitFileState=enabled' in item.stdout }}"
+        state: "{{ 'restarted' if 'ActiveState=active' in item.stdout else 'stopped' }}"
+      loop: '{{ truenas_prior_units.results }}'
+      when: "'LoadState=not-found' not in item.stdout"
+
+    - name: Restart restored Wazuh only if config changed
+      ansible.builtin.systemd_service:
+        name: wazuh-manager
+        state: restarted
+      when: truenas_wazuh_config.backup_file is defined
+
+    - name: Fail after restoring prior owned configuration
+      ansible.builtin.fail:
+        msg: TrueNAS activation failed; prior owned configuration restored. Inspect private service logs; end-to-end delivery remains unverified.
+  always:
+    - name: Remove private temporary rollback snapshot
+      ansible.builtin.file:
+        path: '{{ truenas_backup.path }}'
+        state: absent
+      when: truenas_snapshot_cleanup_safe

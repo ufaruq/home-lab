@@ -1,0 +1,24 @@
+# Owned isolated receiver. Never include /etc/rsyslog.conf or rsyslog.d.
+global(workDirectory="/var/lib/homelab-truenas"
+       maxMessageSize="8k"
+       DefaultNetstreamDriverCAFile="/etc/homelab-truenas/ca.pem"
+       DefaultNetstreamDriverCertFile="/etc/homelab-truenas/server.pem"
+       DefaultNetstreamDriverKeyFile="/etc/homelab-truenas/server.key")
+main_queue(queue.type="FixedArray" queue.size="10000")
+module(load="imtcp" StreamDriver.Name="gtls" StreamDriver.Mode="1"
+       StreamDriver.AuthMode="x509/name" PermittedPeer="homelab-truenas"
+       StreamDriver.PermitExpiredCerts="off"
+       StreamDriver.CheckExtendedKeyPurpose="on"
+       MaxSessions="8"
+       gnutlsPriorityString="NORMAL:-VERS-ALL:+VERS-TLS1.3:+VERS-TLS1.2")
+ruleset(name="homelab_truenas") {
+  if $fromhost-ip != "{{ monitoring_truenas_source_address }}" then { stop }
+  action(type="omfile" file="/var/log/homelab-truenas/events.log"
+         template="RSYSLOG_TraditionalFileFormat"
+         fileOwner="homelab-syslog" fileCreateMode="0640"
+         dirOwner="homelab-syslog" dirCreateMode="02750"
+         action.resumeRetryCount="0")
+  stop
+}
+input(type="imtcp" address="{{ monitoring_truenas_receiver_address }}"
+      port="6514" ruleset="homelab_truenas")
