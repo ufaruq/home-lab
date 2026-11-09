@@ -23,7 +23,7 @@
       ansible.builtin.import_tasks: wazuh-logging-retention.yml
 
 - name: Connect only the explicitly selected guest agents
-  hosts: '{{ monitoring_wazuh_selected_agents | default([]) | join(",") }}'
+  hosts: '{{ (monitoring_wazuh_selected_agents | default([]) | join(",")) or "all:!all" }}'
   gather_facts: true
   become: true
   serial: 1
@@ -54,3 +54,22 @@
         name: monitoring_wazuh_tailnet
         apply:
           tags: [tailnet]
+
+- name: Configure only the owned TrueNAS mutual TLS receiver
+  hosts: wazuh
+  gather_facts: true
+  become: true
+  any_errors_fatal: true
+  tags: [truenas]
+  pre_tasks:
+    - name: Verify expected guest identity before any mutation
+      ansible.builtin.import_tasks: wazuh-logging-identity.yml
+    - name: Require appliance-only deployment selection
+      ansible.builtin.assert:
+        that: monitoring_wazuh_selected_agents == []
+  tasks:
+    - name: Converge isolated TLS receiver and owned Wazuh localfile
+      ansible.builtin.include_role:
+        name: monitoring_wazuh_truenas
+        apply:
+          tags: [truenas]

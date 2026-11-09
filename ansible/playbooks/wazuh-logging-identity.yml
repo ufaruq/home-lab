@@ -1,5 +1,6 @@
 ---
 - name: Require verified access and exact deployment selection
+  tags: [always]
   ansible.builtin.assert:
     that:
       - monitoring_access_verified is sameas true
@@ -8,11 +9,13 @@
       - inventory_hostname != 'parrot_htb'
       - monitoring_expected_vm_uuid | length > 0
 - name: Read the guest identity through pinned SSH
+  tags: [always]
   ansible.builtin.slurp:
     src: /sys/hypervisor/uuid
   register: monitoring_logging_uuid
   no_log: true
 - name: Refuse a different or replaced VM
+  tags: [always]
   ansible.builtin.assert:
     that: (monitoring_logging_uuid.content | b64decode | trim | lower) == (monitoring_expected_vm_uuid | lower)
     fail_msg: VM identity differs from verified private inventory.

@@ -1,0 +1,32 @@
+[Unit]
+Description=Owned TrueNAS mutual TLS syslog receiver
+After=network-online.target
+Wants=network-online.target
+StartLimitIntervalSec=60
+StartLimitBurst=3
+
+[Service]
+Type=simple
+User=homelab-syslog
+Group=homelab-syslog
+UMask=0027
+ExecStartPre=/usr/sbin/rsyslogd -N1 -f /etc/homelab-truenas/rsyslog.conf
+ExecStart=/usr/sbin/rsyslogd -n -i /run/homelab-truenas/rsyslog.pid -f /etc/homelab-truenas/rsyslog.conf
+ExecReload=/bin/kill -HUP $MAINPID
+RuntimeDirectory=homelab-truenas
+RuntimeDirectoryMode=0700
+Restart=on-failure
+RestartSec=5
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+ReadWritePaths=/var/log/homelab-truenas /var/lib/homelab-truenas /run/homelab-truenas
+CapabilityBoundingSet=
+AmbientCapabilities=
+RestrictAddressFamilies=AF_INET AF_UNIX
+MemoryMax=192M
+TasksMax=32
+
+[Install]
+WantedBy=multi-user.target

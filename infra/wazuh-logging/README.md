@@ -26,6 +26,12 @@ targets, failed checks and changed private inputs between plan and apply.
 - Internal logs rotate, and approved cleanup removes only old generated
   compressed alert archives. See [storage details](../../monitoring/wazuh/STORAGE.md).
   Retention is **not a hard disk quota**; monitor usage and ingestion rate.
+- The separate explicit `truenas` phase configures the owned appliance's native
+  mutual TLS syslog path through the [TrueNAS workflow](../../monitoring/truenas/README.md).
+  It requires an empty agent selection and manager-only inventory. TrueNAS stays
+  agentless; its events use manager agent ID `000` and retain source hostname/program.
+  Bootstrap and PKI preparation precede saved-plan review; service configuration
+  still converges through Terraform and Ansible. Delivery is verified separately.
 - Selected guests use Wazuh agents. Existing agents are adopted at an explicitly
   declared compatible version. Fresh installation/enrollment has separate
   package, TLS and credential inputs in the existing agent role.
@@ -177,7 +183,9 @@ Ansible debug verbosity or `--diff` when using real credentials.
 
 Use `--phase tailnet` after preparing the private Tailscale variables documented
 in [TAILNET.md](../../monitoring/wazuh/TAILNET.md), or `--phase all` for both.
-The same phase must be used in plan and apply. Tailscale HTTPS approval, if
+`all` does not enable TrueNAS. Use `--phase truenas` with its reviewed private
+profile and receiver variables as documented in the linked guide. The same
+phase must be used in plan and apply. Tailscale HTTPS approval, if
 needed, is an owner action in the admin console's DNS settings. Failure leaves
 the existing website configuration intact. A successful migration replaces its
 LAN-wide dashboard listener with the tailnet HTTPS endpoint.
@@ -210,8 +218,8 @@ are deliberately absent from Terraform triggers and state.
    Confirm rule `100100`, the correct agent name and a fresh timestamp in Wazuh.
    This checks collection and transport rather than merely service status.
 
-TrueNAS and OPNsense need their native syslog integration and verified appliance
-administration. Do not install this Linux agent on them. Syslog must use a
+TrueNAS uses the [native TLS bootstrap and forwarding workflow](../../monitoring/truenas/README.md).
+OPNsense needs its native syslog integration and verified appliance administration. Do not install this Linux agent on them. Syslog must use a
 verified encrypted private path; LAN reachability alone is not transport
 encryption. XCP-ng remains agentless. Nine halted guests and any guest without
 verified administrator access remain pending until reachable; their existing

@@ -1,0 +1,9 @@
+---
+monitoring_access_verified: false
+monitoring_deployment_approved: false
+monitoring_truenas_receiver_address: ''
+monitoring_truenas_source_address: ''
+monitoring_truenas_ca_file: ''
+monitoring_truenas_server_cert_file: ''
+monitoring_truenas_server_key_file: ''
+monitoring_truenas_receiver_install_approved: false

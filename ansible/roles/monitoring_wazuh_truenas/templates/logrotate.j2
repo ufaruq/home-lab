@@ -1,0 +1,15 @@
+/var/log/homelab-truenas/events.log {
+    daily
+    maxsize 64M
+    rotate 7
+    maxage 7
+    missingok
+    notifempty
+    compress
+    delaycompress
+    create 0640 homelab-syslog wazuh
+    sharedscripts
+    postrotate
+        /bin/systemctl reload homelab-truenas-receiver.service
+    endscript
+}
